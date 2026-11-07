@@ -91,3 +91,89 @@ Prioritas jika konflik: `stockqu-domain` menang atas semua skill lain.
 3. Setiap keputusan pembelian harus ada Reasoning Trace dan Execution Trace.
 4. Setelah selesai, cek: apakah angka bisa ditelusur? Apakah approval masih wajib? Apakah RLS masih aman?
 5. Jangan menambah fitur di luar F-01 sampai F-35 tanpa konfirmasi user.
+
+## Git Commit Message Conventions
+
+Semua anggota tim (Akmal, Bram, Zoe) dan AI agent WAJIB pakai format ini, tanpa scope. Tujuannya biar history rapi dan gampang dibaca.
+
+### Format
+
+```text
+<type>: <short imperative description>
+
+[optional body menjelaskan kenapa dan apa yang berubah]
+```
+
+### Strict Rules
+
+1. **NEVER pakai scope di dalam kurung `(scope)`:**
+   - ✅ CORRECT: `feat: add analyst forecast for days-to-stockout`
+   - ❌ INCORRECT: `feat(analyst): add analyst forecast...`
+   - ❌ INCORRECT: `feat(ui): add analyst forecast...`
+2. **Pakai imperative mood, lowercase** untuk subject:
+   - Pakai `"add"`, `"fix"`, `"update"`, `"remove"`, `"refactor"`.
+   - Jangan pakai past tense (`"added"`, `"fixed"`) atau third-person (`"adds"`).
+3. **No trailing punctuation:** Jangan akhiri subject dengan titik (`.`).
+4. **Subject di bawah 72 karakter** kalau bisa.
+5. **Body (opsional):** Kalau perlu konteks tambahan, pisahkan subject dan body dengan 1 baris kosong.
+
+### Allowed Types
+
+| Type       | Usage                                  | Example StockQu                                   |
+| :--------- | :------------------------------------- | :------------------------------------------------ |
+| `feat`     | Fitur baru                             | `feat: add analyst forecast for days-to-stockout` |
+| `fix`      | Bug fix                                | `fix: correct budget remaining calculation`       |
+| `docs`     | Dokumentasi saja                       | `docs: update roadmap in docs`                    |
+| `style`    | Formatting / styling tanpa ubah logika | `style: reformat kpi cards in overview page`      |
+| `refactor` | Restrukturisasi tanpa tambah fitur     | `refactor: simplify days-to-stockout formula`     |
+| `perf`     | Performance                            | `perf: optimize supabase query for inventory`     |
+| `test`     | Tambah / ubah test                     | `test: add unit test for budget calculation`      |
+| `chore`    | Maintenance, config, dependencies      | `chore: update python dependencies`               |
+
+### Larangan Commit
+
+Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`, file `*.pem` / `*.key`. File-file itu sudah ada di `.gitignore`.
+
+---
+
+## Git Branching Workflow
+
+Semua WAJIB bikin branch baru sebelum ubah apa-apa. **Jangan commit langsung ke `main`, kecuali 1 pengecualian di bawah.**
+
+### Pengecualian
+
+Commit pertama (initial commit) boleh langsung ke `main` karena `main` masih kosong. Setelah itu, tidak boleh lagi.
+
+### Branch Naming Convention
+
+```text
+<type>/<short-kebab-description>
+```
+
+**Contoh StockQu:**
+
+- `feat/analyst-forecast`
+- `feat/supabase-schema`
+- `fix/budget-calculation`
+- `docs/update-roadmap`
+- `refactor/simplify-purchaser-logic`
+- `chore/update-python-dependencies`
+
+`<type>` harus sama dengan Allowed Types di atas.
+
+### Branching Rules
+
+1. **Selalu branch dari `main`:**
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b <type>/<short-description>
+   ```
+2. **Satu branch untuk satu fitur / fix / tugas.** Jangan campur perubahan yang tidak nyambung.
+3. **Push branch** dan buka Pull Request ke `main` kalau sudah selesai:
+   ```bash
+   git push origin <type>/<short-description>
+   ```
+4. **Jangan pernah force-push ke `main`.** Hanya boleh force-push di branch sendiri kalau perlu.
+5. **Hapus branch** setelah di-merge.
+6. **Review silang:** PR Zoe direview Akmal, PR Akmal direview Bram, PR Bram direview Zoe. Minimal 1 approve sebelum merge.
