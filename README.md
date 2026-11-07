@@ -62,6 +62,49 @@ streamlit run app.py
 
 Buka di browser yang muncul, biasanya `http://localhost:8501`.
 
+## P1 - Data & Analyst
+
+### 1. Database
+
+Jalankan di Supabase SQL Editor, berurutan:
+
+1. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
+2. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
+   Konsisten dengan seed P0: 5 item kritis (Item A-E di Branch 1).
+
+Isi `SUPABASE_SERVICE_ROLE_KEY` di `.env` supaya Agent bisa menyimpan hasil (`analyst_forecasts`, `agent_logs`, `sync_logs`).
+
+### 2. Google Sheets (opsional, sinkron dua arah)
+
+1. Buat Service Account di Google Cloud, aktifkan Google Sheets API, download JSON key (simpan di luar repo).
+2. Buat spreadsheet, share ke email service account sebagai **Editor**.
+3. Isi `GOOGLE_SHEETS_SPREADSHEET_ID` dan `GOOGLE_SERVICE_ACCOUNT_FILE` (atau `GOOGLE_SERVICE_ACCOUNT_JSON` untuk Streamlit Cloud).
+4. Tab `Stok` dibuat otomatis saat run pertama, kolom: `sku | product_name | branch | stock_qty | updated_at | source`.
+   Edit stok langsung di Sheets; run berikutnya menyinkronkan ke Supabase (yang `updated_at`-nya lebih baru menang,
+   baris tanpa `updated_at` dianggap edit manual terbaru). Baris invalid ditolak dan dicatat di `sync_logs`.
+
+Jika Sheets belum dikonfigurasi atau gagal dibaca (retry 3x), Analyst otomatis fallback ke stok Supabase dan mencatatnya di Execution Trace.
+
+### 3. Jalankan Analyst
+
+```bash
+python -m scripts.run_analyst
+```
+
+Atau dari halaman **Prediksi & Risiko** di Streamlit (tombol di sidebar). Tes:
+
+```bash
+python -m pytest
+```
+
+### Arsitektur Analyst (LangGraph)
+
+`sync_stock -> load_history -> forecast -> detect_risk -> explain -> persist`
+
+- Rumus resmi ada di satu tempat: `src/utils/formulas.py`.
+- Forecast (`src/tools/forecasting.py`): tren linear 8 minggu x musiman mingguan, dibandingkan dengan baseline rata-rata 180 hari lewat backtest 14 hari. Status risiko tetap memakai rumus resmi; forecast jadi evidence + peringatan dini + rentang ketidakpastian.
+- Setiap angka di Reason Trace menyebut sumbernya (Sheets / Supabase / Analyst).
+
 ## Git
 
 Ikuti `Git Commit Message Conventions` & `Git Branching Workflow` di `AGENTS.md`. Jangan commit langsung ke `main` kecuali initial commit.
@@ -77,6 +120,9 @@ Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 stockqu/
   AGENTS.md
   app.py
+  pages/         # Halaman Streamlit (1_Prediksi_dan_Risiko.py)
+  scripts/       # CLI: run_analyst.py
+  tests/         # pytest (tanpa jaringan)
   requirements.txt
   .env.example
   .gitignore

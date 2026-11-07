@@ -15,23 +15,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Config StockQu dari AGENTS.md ---
-BUDGET_MONTHLY = 50_000_000
-SAFETY_DAYS = 3
-STOCKOUT_THRESHOLD_DAYS = 7
-URGENT_THRESHOLD_DAYS = 4
-
-
-def days_to_stockout(stock: float, avg_daily_sales: float) -> float:
-    """Rumus inti StockQu. Jangan ubah rumus ini."""
-    if avg_daily_sales <= 0:
-        return float("inf")
-    return stock / avg_daily_sales
-
-
-def kebutuhan_restock(avg_daily_sales: float, lead_time_days: int, stock: float) -> float:
-    """kebutuhan_restock = (avg_daily x (lead_time + safety)) - stok"""
-    return (avg_daily_sales * (lead_time_days + SAFETY_DAYS)) - stock
+# --- Config & rumus StockQu: satu sumber di src/config.py dan src/utils/formulas.py ---
+from src.config import BUDGET_MONTHLY
+from src.config import RISK_MAX_DAYS as STOCKOUT_THRESHOLD_DAYS
+from src.config import URGENT_MAX_DAYS as URGENT_THRESHOLD_DAYS
+from src.utils.formulas import days_to_stockout, kebutuhan_restock
 
 
 def load_dummy_data() -> pd.DataFrame:
@@ -89,6 +77,7 @@ def main():
 
     with tab_overview:
         st.warning("CONTOH SIMULASI - BUKAN DATA REAL. Ganti dengan baca Supabase / Google Sheets.")
+        st.page_link("pages/1_Prediksi_dan_Risiko.py", label="Buka hasil Agent Analyst (Prediksi & Risiko, data Supabase)", icon="📈")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Item Berisiko Habis (4-7 hari)", f"{len(df[df['days_to_stockout'] <= STOCKOUT_THRESHOLD_DAYS])} item")
         col2.metric("Item URGENT (<= 4 hari)", f"{len(df[df['days_to_stockout'] <= URGENT_THRESHOLD_DAYS])} item")
