@@ -105,6 +105,29 @@ python -m pytest
 - Forecast (`src/tools/forecasting.py`): tren linear 8 minggu x musiman mingguan, dibandingkan dengan baseline rata-rata 180 hari lewat backtest 14 hari. Status risiko tetap memakai rumus resmi; forecast jadi evidence + peringatan dini + rentang ketidakpastian.
 - Setiap angka di Reason Trace menyebut sumbernya (Sheets / Supabase / Analyst).
 
+## P2 - Purchaser
+
+Jalankan migration P2 setelah migration P0 dan P1:
+
+```text
+supabase/migrations/20261107111649_p2_purchaser.sql
+```
+
+Migration menambah MOQ/pack pada kontrak, `procurement_plans`, `procurement_plan_items`, RLS read-only untuk UI,
+grant Data API eksplisit, dan RPC transaksional `persist_procurement_plan` yang hanya dapat dipanggil `service_role`.
+
+Jalankan Purchaser dari CLI atau halaman **Rencana Pembelian**:
+
+```bash
+python -m scripts.run_purchaser --period 2026-11
+```
+
+Alur LangGraph: `load_inputs -> prioritize -> optimize -> explain -> validate -> persist`.
+Budget tersedia dihitung ulang dari `total - used - PO committed`, tetap dibatasi Rp 50.000.000. Optimizer MILP
+mematuhi budget, MOQ, pack size, dan unit keputusan SKU-cabang. Jika solver gagal, fallback greedy dicatat di
+Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan menjadi `deferred` dengan label
+`DATA TIDAK DITEMUKAN`.
+
 ## Git
 
 Ikuti `Git Commit Message Conventions` & `Git Branching Workflow` di `AGENTS.md`. Jangan commit langsung ke `main` kecuali initial commit.
@@ -120,8 +143,8 @@ Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 stockqu/
   AGENTS.md
   app.py
-  pages/         # Halaman Streamlit (1_Prediksi_dan_Risiko.py)
-  scripts/       # CLI: run_analyst.py
+  pages/         # Halaman Streamlit Analyst + Purchaser
+  scripts/       # CLI: run_analyst.py + run_purchaser.py
   tests/         # pytest (tanpa jaringan)
   requirements.txt
   .env.example
