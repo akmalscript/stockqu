@@ -104,6 +104,13 @@ class SupabaseRepository:
             .order("sku")
         )
 
+    def fetch_suppliers(self) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("suppliers")
+            .select("id, name, lead_time_days, performance_score")
+            .order("name")
+        )
+
     def fetch_inventory(self) -> list[dict]:
         return self._fetch_all(
             lambda: self.read.table("inventory").select("id, product_id, branch_id, stock_qty, updated_at").order("id")
@@ -121,7 +128,7 @@ class SupabaseRepository:
         end = datetime(year + (month == 12), 1 if month == 12 else month + 1, 1, tzinfo=start.tzinfo)
         return self._fetch_all(
             lambda: self.read.table("purchase_orders")
-            .select("id, total_amount, status, created_at")
+            .select("id, supplier_id, total_amount, status, created_at")
             .gte("created_at", start.isoformat())
             .lt("created_at", end.isoformat())
             .order("created_at")

@@ -1,13 +1,21 @@
+"""Dashboard utama StockQu dengan data Supabase yang dibatasi RLS."""
+from __future__ import annotations
+
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
-# StockQu - Streamlit Dashboard Skeleton
-# Stack: Streamlit (frontend) + Supabase (backend) + LangGraph (agent) + n8n (otomasi)
-# Aturan bisnis ada di .agents/skills/stockqu-domain/SKILL.md dan AGENTS.md
-# JANGAN mengarang data. Jika data tidak ada, tulis DATA TIDAK DITEMUKAN.
-# Jika ini data dummy, wajib tulis label: CONTOH SIMULASI - BUKAN DATA REAL
+from src.config import (
+    BUDGET_MONTHLY,
+    CRON_TIME_WIB,
+    LABEL_NOT_FOUND,
+    LABEL_SIMULASI,
+)
+from src.services.auth import ALL_USER_ROLES, require_streamlit_access
+from src.services.dashboard import load_dashboard_snapshot
+from src.services.supabase_client import SupabaseRepository
 
 st.set_page_config(
     page_title="StockQu - Multi-Agent Procurement",
@@ -15,50 +23,148 @@ st.set_page_config(
     layout="wide",
 )
 
-# --- Config & rumus StockQu: satu sumber di src/config.py dan src/utils/formulas.py ---
-from src.config import BUDGET_MONTHLY
-from src.config import RISK_MAX_DAYS as STOCKOUT_THRESHOLD_DAYS
-from src.config import URGENT_MAX_DAYS as URGENT_THRESHOLD_DAYS
-from src.services.auth import ALL_USER_ROLES, require_streamlit_access
-from src.utils.formulas import days_to_stockout, kebutuhan_restock
+actor, user_client = require_streamlit_access(
+    ALL_USER_ROLES,
+    "membuka dashboard StockQu",
+)
+repository = SupabaseRepository(read_client=user_client)
+now_wib = datetime.now(ZoneInfo("Asia/Jakarta"))
+period = now_wib.strftime("%Y-%m")
+snapshot = load_dashboard_snapshot(repository, period)
 
-actor, _user_client = require_streamlit_access(ALL_USER_ROLES, "membuka dashboard StockQu")
+
+def rupiah(value) -> str:
+    if value is None:
+        return LABEL_NOT_FOUND
+    try:
+        return f"Rp {float(value):,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return LABEL_NOT_FOUND
 
 
-def load_dummy_data() -> pd.DataFrame:
-    """Data dummy HANYA untuk skeleton. Ganti dengan baca Supabase / Sheets."""
+def number(value, digits: int = 2) -> str:
+    if value is None:
+        return LABEL_NOT_FOUND
+    try:
+        formatted = f"{float(value):,.{digits}f}"
+        return formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+    except (TypeError, ValueError):
+        return LABEL_NOT_FOUND
+
+
+def percentage(value) -> str:
+    if value is None:
+        return LABEL_NOT_FOUND
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return LABEL_NOT_FOUND
+    amount = amount * 100 if amount <= 1 else amount
+    return f"{number(amount)}%"
+
+
+def local_time(value) -> str:
+    if not value:
+        return LABEL_NOT_FOUND
+    try:
+        raw_timestamp = str(value)
+        if raw_timestamp.endswith("Z"):
+            raw_timestamp = raw_timestamp[:-1] + "+00:00"
+        timestamp = datetime.fromisoformat(raw_timestamp)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=ZoneInfo("Asia/Jakarta"))
+        return timestamp.astimezone(ZoneInfo("Asia/Jakarta")).strftime("%d %b %Y %H:%M WIB")
+    except ValueError:
+        return str(value)
+
+
+def has_issue(source: str) -> bool:
+    return any(issue.startswith(f"{source}:") for issue in snapshot.issues)
+
+
+def priority_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"sku": "Item A", "branch": "Branch 1", "stock": 100, "avg_daily_sales": 50, "lead_time_days": 2, "margin": 0.18, "turnover": 4.2, "harga_satuan": 36000},
-            {"sku": "Item B", "branch": "Branch 1", "stock": 90, "avg_daily_sales": 30, "lead_time_days": 3, "margin": 0.22, "turnover": 3.8, "harga_satuan": 50000},
-            {"sku": "Item C", "branch": "Branch 2", "stock": 80, "avg_daily_sales": 20, "lead_time_days": 2, "margin": 0.25, "turnover": 3.1, "harga_satuan": 50000},
-            {"sku": "Item D", "branch": "Branch 2", "stock": 100, "avg_daily_sales": 20, "lead_time_days": 3, "margin": 0.30, "turnover": 2.5, "harga_satuan": 41428},
-            {"sku": "Item E", "branch": "Branch 3", "stock": 120, "avg_daily_sales": 20, "lead_time_days": 4, "margin": 0.12, "turnover": 1.8, "harga_satuan": 55000},
+            {
+                "Risiko": row.get("risk_level") or LABEL_NOT_FOUND,
+                "SKU": row.get("sku") or LABEL_NOT_FOUND,
+                "Item": row.get("product_name") or LABEL_NOT_FOUND,
+                "Cabang": row.get("branch") or LABEL_NOT_FOUND,
+                "Stok": row.get("stock_qty"),
+                "Rata-rata/hari": row.get("avg_daily_sales"),
+                "Days-to-stockout": row.get("days_to_stockout"),
+                "Restock": row.get("restock_qty"),
+            }
+            for row in rows
         ]
     )
 
 
-def main():
+def render_reason_trace(item: dict, label: str) -> None:
+    trace = item.get("reason_trace") or {}
+    with st.expander(label):
+        st.markdown(f"**Ringkasan:** {trace.get('summary') or LABEL_NOT_FOUND}")
+        for key, title in (
+            ("demand_trend", "Tren permintaan"),
+            ("stockout_prediction", "Prediksi stockout"),
+            ("restock_recommendation", "Rekomendasi restock"),
+        ):
+            if trace.get(key):
+                st.markdown(f"**{title}:** {trace[key]}")
+        evidence = trace.get("evidence") or item.get("evidence") or []
+        if evidence:
+            st.markdown("**Evidence dan sumber:**")
+            st.dataframe(
+                pd.DataFrame(evidence).astype(str),
+                hide_index=True,
+                width="stretch",
+            )
+        else:
+            st.caption(f"Evidence: {LABEL_NOT_FOUND}")
+        assumptions = trace.get("assumptions") or []
+        if assumptions:
+            st.markdown(
+                "**Asumsi/kebijakan:**\n"
+                + "\n".join(f"- {text}" for text in assumptions)
+            )
+
+
+def main() -> None:
     st.title("📦 StockQu - Multi-Agent Procurement System")
     st.caption("Streamlit + Supabase + LangGraph + n8n | GTNIC Enterprise dan Industry")
 
-    # Sidebar - Status Sistem
+    latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None
+    budget_available = snapshot.budget.get("available_budget") if snapshot.budget else None
+
     with st.sidebar:
         st.header("Status Sistem")
-        st.metric("Budget Bulanan", f"Rp {BUDGET_MONTHLY:,}")
-        st.metric("Sisa Budget (Contoh)", "Rp 12.000.000")
-        st.metric("Cron", "Setiap hari jam 7 pagi")
+        st.metric("Budget kebijakan", rupiah(BUDGET_MONTHLY))
+        st.metric("Sisa budget aktual", rupiah(budget_available))
+        st.metric("Cron", f"Setiap hari {CRON_TIME_WIB} WIB")
+        if latest_sync:
+            st.caption(
+                f"Sinkron Sheets ↔ Supabase: {latest_sync.get('status', LABEL_NOT_FOUND)} · "
+                f"{local_time(latest_sync.get('started_at'))}"
+            )
+        else:
+            st.caption(f"Sinkron Sheets ↔ Supabase: {LABEL_NOT_FOUND}")
         st.divider()
         st.info(
-            "Human-in-the-loop: Tanpa balas OK di WhatsApp, "
-            "PO tidak dikirim dan stok tidak diubah."
+            "Human-in-the-loop: tanpa balas OK di WhatsApp, PO tidak dikirim "
+            "dan stok tidak diubah."
         )
-        if st.button("🔄 Jalankan Agent (Skeleton)", use_container_width=True):
-            st.session_state["agent_run"] = True
-            st.toast("Agent dijalankan. Hubungkan ke LangGraph di src/agents/graph.py")
+        st.page_link(
+            "pages/1_Prediksi_dan_Risiko.py",
+            label="Jalankan Agent Analyst",
+            icon="📈",
+        )
+        st.page_link(
+            "pages/2_Rencana_Pembelian.py",
+            label="Jalankan Agent Purchaser",
+            icon="🧾",
+        )
 
-    # Tabs utama sesuai F-31 sampai F-35
-    tab_overview, tab_agent, tab_reason, tab_supplier, tab_approval, tab_report = st.tabs(
+    tabs = st.tabs(
         [
             "📊 Overview",
             "🤖 Agent Run",
@@ -69,102 +175,271 @@ def main():
         ]
     )
 
-    df = load_dummy_data()
-    df["days_to_stockout"] = df.apply(
-        lambda r: days_to_stockout(r["stock"], r["avg_daily_sales"]), axis=1
-    )
-    df["kebutuhan_restock"] = df.apply(
-        lambda r: kebutuhan_restock(r["avg_daily_sales"], r["lead_time_days"], r["stock"]), axis=1
-    )
-    df = df.sort_values("days_to_stockout")
+    with tabs[0]:
+        if snapshot.has_dummy_data:
+            st.warning(LABEL_SIMULASI)
+        st.caption(
+            "Sumber: Supabase dengan JWT user/RLS. Stok Supabase disinkronkan dua arah "
+            "dengan Google Sheets dan tetap dipisahkan per cabang."
+        )
+        st.page_link(
+            "pages/1_Prediksi_dan_Risiko.py",
+            label="Buka detail Prediksi & Risiko",
+            icon="📈",
+        )
+        st.page_link(
+            "pages/2_Rencana_Pembelian.py",
+            label="Buka detail Rencana Pembelian",
+            icon="🧾",
+        )
 
-    with tab_overview:
-        st.warning("CONTOH SIMULASI - BUKAN DATA REAL. Ganti dengan baca Supabase / Google Sheets.")
-        st.page_link("pages/1_Prediksi_dan_Risiko.py", label="Buka hasil Agent Analyst (Prediksi & Risiko, data Supabase)", icon="📈")
-        st.page_link("pages/2_Rencana_Pembelian.py", label="Buka hasil Agent Purchaser (Rencana Pembelian, data Supabase)", icon="🧾")
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Item Berisiko Habis (4-7 hari)", f"{len(df[df['days_to_stockout'] <= STOCKOUT_THRESHOLD_DAYS])} item")
-        col2.metric("Item URGENT (<= 4 hari)", f"{len(df[df['days_to_stockout'] <= URGENT_THRESHOLD_DAYS])} item")
-        col3.metric("Sisa Budget", "Rp 12.000.000")
-        col4.metric("Siklus Draft PO", "15 menit (dari 2 hari)")
+        risk_rows = [
+            row
+            for row in snapshot.forecasts
+            if row.get("risk_level") in {"URGENT", "RISIKO"}
+        ]
+        urgent_count = sum(row.get("risk_level") == "URGENT" for row in risk_rows)
+        risk_metric = f"{len(risk_rows)} item" if snapshot.forecasts else LABEL_NOT_FOUND
+        urgent_metric = f"{urgent_count} item" if snapshot.forecasts else LABEL_NOT_FOUND
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Item berisiko (≤ 7 hari)", risk_metric)
+        c2.metric("Item URGENT (≤ 4 hari)", urgent_metric)
+        c3.metric("Sisa budget aktual", rupiah(budget_available))
+        c4.metric(
+            "Target deteksi → draft PO",
+            "15 menit",
+            help="Target demo pada SRS, bukan hasil ukur aktual",
+        )
 
         st.subheader("5 Item Prioritas")
-        st.dataframe(
-            df[["sku", "branch", "stock", "avg_daily_sales", "days_to_stockout", "kebutuhan_restock"]],
-            use_container_width=True,
-            hide_index=True,
-        )
-        st.caption("Urutkan berdasarkan days-to-stockout terkecil dulu, bukan margin terbesar.")
+        if risk_rows:
+            st.dataframe(
+                priority_frame(risk_rows[:5]),
+                hide_index=True,
+                width="stretch",
+            )
+            st.caption(
+                f"Run Analyst: `{snapshot.analyst_run_id}` · diurutkan berdasarkan "
+                "days-to-stockout terkecil, per SKU-cabang."
+            )
+        elif snapshot.forecasts:
+            st.success("Tidak ada SKU-cabang berisiko habis dalam 7 hari pada run Analyst terakhir.")
+        elif snapshot.inventory:
+            st.warning(
+                f"{LABEL_NOT_FOUND} - belum ada hasil Analyst. Stok nyata tersedia, "
+                "tetapi rata-rata penjualan dan days-to-stockout belum dihitung."
+            )
+            stock_rows = pd.DataFrame(
+                [
+                    {
+                        "SKU": row.get("sku") or LABEL_NOT_FOUND,
+                        "Item": row.get("product_name") or LABEL_NOT_FOUND,
+                        "Cabang": row.get("branch") or LABEL_NOT_FOUND,
+                        "Stok": row.get("stock_qty"),
+                        "Diperbarui": local_time(row.get("updated_at")),
+                    }
+                    for row in snapshot.inventory
+                ]
+            )
+            st.dataframe(stock_rows, hide_index=True, width="stretch")
+        else:
+            st.warning(
+                f"{LABEL_NOT_FOUND} - inventory dan hasil Analyst belum tersedia "
+                "untuk akses user ini."
+            )
 
-    with tab_agent:
-        st.subheader("Agent Run - Analyst, Purchaser, Negotiator")
-        st.write("**Analyst:** Hitung days-to-stockout dari histori 6 bulan.")
-        st.write("**Purchaser:** Prioritaskan dengan budget Rp 50.000.000.")
-        st.write("**Negotiator:** Bandingkan minimal 3 supplier per item.")
-        if st.session_state.get("agent_run"):
-            st.success("Agent selesai (skeleton). Execution Trace akan muncul di sini setelah LangGraph dihubungkan.")
-            st.code(
-                "2026-11-07 07:00:00 | Baca Sheets | OK\n"
-                "2026-11-07 07:01:12 | Hitung days-to-stockout | OK\n"
-                "2026-11-07 07:02:30 | Bandingkan 3 supplier | OK\n"
-                "2026-11-07 07:03:45 | Buat draft PO | OK",
-                language="text",
+    with tabs[1]:
+        st.subheader("Execution Trace - Agent Terakhir")
+        st.write("**Analyst:** histori 6 bulan, forecast, dan deteksi stockout per cabang.")
+        st.write("**Purchaser:** prioritas dan alokasi dengan plafon budget Rp 50.000.000.")
+        st.write("**Negotiator:** memerlukan minimal 3 penawaran supplier nyata per item.")
+        if snapshot.agent_logs:
+            log_frame = pd.DataFrame(snapshot.agent_logs)
+            columns = [
+                column
+                for column in (
+                    "created_at",
+                    "agent_name",
+                    "tool_name",
+                    "status",
+                    "input_summary",
+                    "output_summary",
+                    "error_message",
+                )
+                if column in log_frame.columns
+            ]
+            st.dataframe(
+                log_frame[columns],
+                hide_index=True,
+                width="stretch",
+            )
+            st.caption(
+                f"Run: `{snapshot.purchaser_run_id or snapshot.analyst_run_id}` · "
+                "sumber: Supabase agent_logs"
             )
         else:
-            st.info("Klik tombol Jalankan Agent di sidebar untuk simulasi.")
+            st.info(f"Execution Trace: {LABEL_NOT_FOUND}")
 
-    with tab_reason:
-        st.subheader("Reason Trace Panel - Wajib Ada Angka Real")
-        st.code(
-            "[REASONING TRACE - THE PURCHASER]\n"
-            "Constraint: Sisa budget Rp 12.000.000 (dari plafon Rp 50.000.000).\n\n"
-            "- PRIORITAS 1 (Item A): Days-to-stockout 2 hari (URGENT). Alokasi Rp 3.600.000 disetujui.\n"
-            "- PRIORITAS 2 (Item B): Days-to-stockout 3 hari, margin 22%, turnover 3.8x. Alokasi Rp 3.000.000 disetujui.\n"
-            "- DITUNDA (Item E): Ditunda ke minggu depan karena sisa budget habis dan risiko terendah (6 hari).",
-            language="text",
-        )
-        st.caption("Aturan: Jangan tulis kalimat generik seperti 'karena penting'. Harus ada angka dan sumbernya.")
+    with tabs[2]:
+        st.subheader("Reason Trace - Angka dan Sumber Nyata")
+        if snapshot.plan_items:
+            st.caption(f"Sumber: Purchaser run `{snapshot.purchaser_run_id}`")
+            for item in snapshot.plan_items[:20]:
+                label = (
+                    f"Rank {item.get('rank', '-')} · {item.get('sku') or LABEL_NOT_FOUND} · "
+                    f"{item.get('branch') or LABEL_NOT_FOUND} · "
+                    f"{item.get('decision') or LABEL_NOT_FOUND}"
+                )
+                render_reason_trace(item, label)
+        elif snapshot.forecasts:
+            st.caption(f"Sumber: Analyst run `{snapshot.analyst_run_id}`")
+            for item in snapshot.forecasts[:20]:
+                label = (
+                    f"{item.get('risk_level') or LABEL_NOT_FOUND} · "
+                    f"{item.get('sku') or LABEL_NOT_FOUND} · "
+                    f"{item.get('branch') or LABEL_NOT_FOUND}"
+                )
+                render_reason_trace(item, label)
+        else:
+            st.info(f"Reason Trace: {LABEL_NOT_FOUND}")
 
-    with tab_supplier:
-        st.subheader("Perbandingan Supplier - Minimal 3 Supplier")
-        st.info("DATA TIDAK DITEMUKAN - Hubungkan ke RAG kontrak lama dan API / scraping supplier.")
-        supplier_df = pd.DataFrame(
-            [
-                {"supplier": "Supplier A", "harga": "DATA TIDAK DITEMUKAN", "lead_time": "DATA TIDAK DITEMUKAN", "diskon": "DATA TIDAK DITEMUKAN", "performa": "DATA TIDAK DITEMUKAN"},
-                {"supplier": "Supplier B", "harga": "DATA TIDAK DITEMUKAN", "lead_time": "DATA TIDAK DITEMUKAN", "diskon": "DATA TIDAK DITEMUKAN", "performa": "DATA TIDAK DITEMUKAN"},
-                {"supplier": "Supplier C", "harga": "DATA TIDAK DITEMUKAN", "lead_time": "DATA TIDAK DITEMUKAN", "diskon": "DATA TIDAK DITEMUKAN", "performa": "DATA TIDAK DITEMUKAN"},
+    with tabs[3]:
+        st.subheader("Perbandingan Supplier dari Kontrak Supabase")
+        if snapshot.contracts:
+            products = {}
+            for contract in snapshot.contracts:
+                product_id = str(contract.get("product_id"))
+                products.setdefault(
+                    product_id,
+                    f"{contract.get('sku') or LABEL_NOT_FOUND} - "
+                    f"{contract.get('product_name') or LABEL_NOT_FOUND}",
+                )
+            label_to_id = {label: product_id for product_id, label in products.items()}
+            selected_label = st.selectbox("Pilih item", sorted(label_to_id))
+            selected_id = label_to_id[selected_label]
+            contracts = [
+                row
+                for row in snapshot.contracts
+                if str(row.get("product_id")) == selected_id
             ]
-        )
-        st.dataframe(supplier_df, use_container_width=True, hide_index=True)
+            supplier_rows = pd.DataFrame(
+                [
+                    {
+                        "Supplier": row.get("supplier_name") or LABEL_NOT_FOUND,
+                        "Harga": rupiah(row.get("price")),
+                        "Lead time": (
+                            f"{row['supplier_lead_time_days']} hari"
+                            if row.get("supplier_lead_time_days") is not None
+                            else LABEL_NOT_FOUND
+                        ),
+                        "Diskon": percentage(row.get("discount")),
+                        "Performa": number(row.get("performance_score")),
+                        "MOQ": row.get("moq", LABEL_NOT_FOUND),
+                        "Pack": row.get("pack_size", LABEL_NOT_FOUND),
+                        "Valid sampai": row.get("valid_until") or LABEL_NOT_FOUND,
+                    }
+                    for row in contracts
+                ]
+            )
+            st.dataframe(supplier_rows, hide_index=True, width="stretch")
+            unique_suppliers = len(
+                {row.get("supplier_id") for row in contracts if row.get("supplier_id")}
+            )
+            if unique_suppliers < 3:
+                st.warning(
+                    f"Baru ada {unique_suppliers} supplier nyata untuk item ini; "
+                    "syarat minimal 3 supplier belum terpenuhi."
+                )
+            else:
+                st.success(f"{unique_suppliers} supplier nyata tersedia untuk dibandingkan.")
+        elif has_issue("contracts"):
+            st.error(f"Kontrak supplier: {LABEL_NOT_FOUND} - Supabase tidak dapat dibaca.")
+        else:
+            st.info(f"Kontrak supplier: {LABEL_NOT_FOUND}")
 
-    with tab_approval:
+    with tabs[4]:
         st.subheader("Approval WhatsApp - Human-in-the-Loop")
-        st.code(
-            "Pak, butuh approval Rp 12jt untuk 4 item (1 item ditunda budget), "
-            "paling urgent Item A (habis 2 hari). Balas OK untuk kirim PO.",
-            language="text",
+        pending = [
+            row
+            for row in snapshot.purchase_orders
+            if str(row.get("status") or "").lower()
+            in {"waiting_approval", "pending_approval"}
+        ]
+        if pending:
+            supplier_map = {
+                str(row.get("id")): row.get("name") for row in snapshot.suppliers
+            }
+            approval_rows = pd.DataFrame(
+                [
+                    {
+                        "PO": row.get("id"),
+                        "Supplier": supplier_map.get(
+                            str(row.get("supplier_id")),
+                            LABEL_NOT_FOUND,
+                        ),
+                        "Total": rupiah(row.get("total_amount")),
+                        "Status": row.get("status"),
+                        "Dibuat": local_time(row.get("created_at")),
+                    }
+                    for row in pending
+                ]
+            )
+            st.dataframe(approval_rows, hide_index=True, width="stretch")
+            st.metric(
+                "Total menunggu approval",
+                rupiah(sum(float(row.get("total_amount") or 0) for row in pending)),
+            )
+            st.warning(
+                "PO tetap tertahan. Pengiriman Email dan update stok hanya boleh berjalan "
+                "setelah manager membalas OK di WhatsApp."
+            )
+        elif has_issue("purchase_orders"):
+            st.error(f"Status approval: {LABEL_NOT_FOUND} - Supabase tidak dapat dibaca.")
+        else:
+            st.info("Tidak ada PO yang menunggu approval pada periode berjalan.")
+
+    with tabs[5]:
+        st.subheader("Enterprise Report - Dampak Plan Terakhir")
+        impact = (snapshot.procurement_plan or {}).get("impact") or {}
+        if impact:
+            e1, e2, e3 = st.columns(3)
+            e1.metric("Item dipilih", impact.get("selected_items", LABEL_NOT_FOUND))
+            e2.metric(
+                "URGENT tercakup",
+                impact.get("urgent_items_covered", LABEL_NOT_FOUND),
+            )
+            coverage = impact.get("additional_coverage_days")
+            e3.metric(
+                "Tambahan coverage",
+                f"{number(coverage)} hari" if coverage is not None else LABEL_NOT_FOUND,
+            )
+            st.metric(
+                "Estimasi margin terlindungi",
+                rupiah(impact.get("estimated_margin_protected")),
+            )
+            st.caption(
+                f"Sumber: procurement plan `{snapshot.purchaser_run_id}` · "
+                f"basis: {impact.get('impact_basis') or LABEL_NOT_FOUND}"
+            )
+        else:
+            st.info(f"Dampak enterprise plan: {LABEL_NOT_FOUND}")
+        st.page_link(
+            "pages/2_Rencana_Pembelian.py",
+            label="Buka rencana pembelian dan laporan lengkap",
+            icon="📊",
         )
-        col_a, col_b = st.columns(2)
-        if col_a.button("✅ Simulasi Balas OK", use_container_width=True):
-            st.success("OK diterima. PO dikirim via Email dan stok di-update di Sheets + Supabase. (Skeleton - hubungkan ke n8n)")
-        if col_b.button("❌ Simulasi Tolak", use_container_width=True):
-            st.error("PO ditolak. Tidak ada pengiriman dan tidak ada update stok.")
 
-    with tab_report:
-        st.subheader("Enterprise Report")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Pengurangan Stockout", "80%")
-        col2.metric("Hemat Waktu Cek Stok", "15 jam / minggu")
-        col3.metric("Pengurangan Dead Stock", "30%")
+    if snapshot.issues:
         st.divider()
-        col_e1, col_e2 = st.columns(2)
-        if col_e1.button("📄 Export PDF (Skeleton)", use_container_width=True):
-            st.info("Hubungkan ke document-skills (pdf) untuk export PO dan laporan.")
-        if col_e2.button("📊 Export Excel (Skeleton)", use_container_width=True):
-            st.info("Hubungkan ke document-skills (xlsx) untuk export perbandingan supplier.")
-
-    st.divider()
-    st.caption(f"Terakhir di-update: {datetime.now().strftime('%d %b %Y %H:%M')} | StockQu - Jangan mengarang harga, diskon, atau stok.")
+        unavailable = sorted({issue.split(":", 1)[0] for issue in snapshot.issues})
+        st.caption(
+            "Sebagian sumber belum tersedia atau tidak diizinkan oleh RLS: "
+            + ", ".join(unavailable)
+        )
+    st.caption(
+        f"Dashboard dibaca {now_wib.strftime('%d %b %Y %H:%M WIB')} · "
+        "angka berasal dari Supabase/hasil sinkron Google Sheets; data kosong tidak direka."
+    )
 
 
 if __name__ == "__main__":
