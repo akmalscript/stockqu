@@ -2,7 +2,7 @@ from src.agents.analyst import AnalystAgent
 from src.utils import formulas as F
 from tests.fakes import AS_OF, FakeRepo, FakeSheets
 
-no_sleep = lambda s: None  # noqa: E731
+no_sleep = lambda s: None
 
 
 def _by_key(result):
@@ -70,7 +70,7 @@ def test_no_history_routes_to_persist_with_not_found():
     out = AnalystAgent(repo, sheets_factory=None).run()
     assert out["status"] == "no_history"
     assert out.get("risk_items", []) == []
-    failed = [s for s in out["execution_trace"] if s["tool_name"] == "baca_histori_penjualan"][0]
+    failed = next(s for s in out["execution_trace"] if s["tool_name"] == "baca_histori_penjualan")
     assert failed["status"] == "failed" and "DATA TIDAK DITEMUKAN" in failed["output_summary"]
 
 
@@ -79,3 +79,16 @@ def test_write_failure_does_not_crash():
     out = AnalystAgent(repo, sheets_factory=None).run()
     assert out["status"] == "completed" and out["persisted"] is False
     assert any("analyst_forecasts" in w for w in out["warnings"])
+
+
+def test_dry_run_keeps_all_external_sinks_read_only():
+    repo = FakeRepo()
+    sheets = FakeSheets([["SKU-A", "Item A", "Branch 1", "75", "2026-11-07T06:59:00+00:00", "sheets"]])
+    out = AnalystAgent(repo, sheets_factory=lambda: sheets, persist=False, sleep=no_sleep).run()
+
+    assert out["status"] == "completed"
+    assert repo.upserts == []
+    assert repo.forecasts == []
+    assert repo.agent_logs == []
+    assert repo.sync_logs == []
+    assert sheets.written is None

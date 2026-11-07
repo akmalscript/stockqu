@@ -1,7 +1,7 @@
-import os
+from datetime import datetime
+
 import pandas as pd
 import streamlit as st
-from datetime import datetime
 
 # StockQu - Streamlit Dashboard Skeleton
 # Stack: Streamlit (frontend) + Supabase (backend) + LangGraph (agent) + n8n (otomasi)
@@ -19,7 +19,10 @@ st.set_page_config(
 from src.config import BUDGET_MONTHLY
 from src.config import RISK_MAX_DAYS as STOCKOUT_THRESHOLD_DAYS
 from src.config import URGENT_MAX_DAYS as URGENT_THRESHOLD_DAYS
+from src.services.auth import ALL_USER_ROLES, require_streamlit_access
 from src.utils.formulas import days_to_stockout, kebutuhan_restock
+
+actor, _user_client = require_streamlit_access(ALL_USER_ROLES, "membuka dashboard StockQu")
 
 
 def load_dummy_data() -> pd.DataFrame:

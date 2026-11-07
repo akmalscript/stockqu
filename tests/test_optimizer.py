@@ -55,7 +55,7 @@ def test_optimizer_greedy_fallback_is_auditable(monkeypatch):
     monkeypatch.setattr(optimizer, "_solve_milp", fail_solver)
     result = optimize_budget_allocation(items(), 1_000_000)
     assert result.method == "greedy_fallback"
-    assert "solver unavailable" in result.solver_status
+    assert result.solver_status == "fallback: RuntimeError"
     assert result.proposed_total <= 1_000_000
 
 

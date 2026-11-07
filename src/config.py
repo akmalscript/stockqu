@@ -22,6 +22,17 @@ MIN_SUPPLIERS = 3
 CRON_TIME_WIB = "07:00"
 BRANCH_LABELS = ("Branch 1", "Branch 2", "Branch 3")
 
+# --- Batas kerja agent (mencegah satu request menguasai worker/provider) ---
+MAX_DATA_ROWS = 10_000
+MAX_SALES_HISTORY_ROWS = 100_000
+MAX_SHEET_STOCK_ROWS = 5_000
+MAX_FORECAST_PAIRS = 3_000
+MAX_PURCHASER_ITEMS = 1_000
+AGENT_RUN_TIMEOUT_SECONDS = 120
+AGENT_RATE_LIMIT_SECONDS = 30
+MAX_CONCURRENT_AGENT_RUNS = 2
+PROVIDER_REQUEST_TIMEOUT_SECONDS = 20
+
 # --- Label anti-halusinasi ---
 LABEL_SIMULASI = "CONTOH SIMULASI - BUKAN DATA REAL"
 LABEL_NOT_FOUND = "DATA TIDAK DITEMUKAN"
@@ -41,7 +52,7 @@ def get_setting(name: str, default: str | None = None) -> str | None:
         if name in st.secrets:
             return str(st.secrets[name])
     except Exception:  # noqa: BLE001 - secrets tidak tersedia di luar Streamlit
-        pass
+        return default
     return default
 
 

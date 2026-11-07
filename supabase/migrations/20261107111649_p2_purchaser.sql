@@ -69,29 +69,35 @@ create index if not exists idx_plan_items_selected
   on public.procurement_plan_items (plan_id, rank)
   where decision in ('selected', 'partial');
 
--- 4. RLS: UI fase P2 hanya boleh membaca. Semua write melalui Agent Service
---    dengan service_role; kebijakan RBAC per user diperketat pada P5.
+-- 4. RLS: UI wajib authenticated. Migration hardening berikutnya menambahkan
+--    policy role/branch; semua write tetap melalui Agent Service service_role.
 alter table public.procurement_plans enable row level security;
 alter table public.procurement_plan_items enable row level security;
 
 drop policy if exists "read procurement_plans" on public.procurement_plans;
 create policy "read procurement_plans"
   on public.procurement_plans for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using (
+    coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') in
+      ('super_admin', 'purchasing_staff', 'procurement_manager')
+  );
 
 drop policy if exists "read procurement_plan_items" on public.procurement_plan_items;
 create policy "read procurement_plan_items"
   on public.procurement_plan_items for select
-  to anon, authenticated
-  using (true);
+  to authenticated
+  using (
+    coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') in
+      ('super_admin', 'purchasing_staff', 'procurement_manager')
+  );
 
 -- Supabase mulai 30 Okt 2026 tidak otomatis mengekspos tabel baru ke Data API.
 -- Grant eksplisit dipisahkan dari RLS dan dibuat least-privilege untuk client.
 revoke all on table public.procurement_plans from anon, authenticated;
 revoke all on table public.procurement_plan_items from anon, authenticated;
-grant select on table public.procurement_plans to anon, authenticated;
-grant select on table public.procurement_plan_items to anon, authenticated;
+grant select on table public.procurement_plans to authenticated;
+grant select on table public.procurement_plan_items to authenticated;
 grant all on table public.procurement_plans to service_role;
 grant all on table public.procurement_plan_items to service_role;
 grant usage, select on sequence public.procurement_plan_items_id_seq to service_role;
@@ -99,7 +105,7 @@ grant usage, select on sequence public.procurement_plan_items_id_seq to service_
 -- Prasyarat P0/P1 yang dibaca P2 melalui Data API.
 grant select on table public.budgets, public.purchase_orders, public.products,
   public.branches, public.contracts, public.analyst_forecasts, public.agent_logs
-  to anon, authenticated;
+  to authenticated;
 grant select on table public.budgets, public.purchase_orders, public.products,
   public.branches, public.contracts, public.analyst_forecasts, public.agent_logs
   to service_role;

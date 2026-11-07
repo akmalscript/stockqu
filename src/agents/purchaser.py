@@ -18,10 +18,13 @@ from zoneinfo import ZoneInfo
 
 from langgraph.graph import END, START, StateGraph
 
-from src.config import LABEL_NOT_FOUND
+from src.config import LABEL_NOT_FOUND, MAX_PURCHASER_ITEMS
+from src.services.auth import PURCHASER_RUN_ROLES, ActorContext, authorize, system_actor
 from src.services.budget import load_budget_snapshot
-from src.services.supabase_client import to_jsonable
+from src.services.supabase_client import DataLimitExceeded, to_jsonable
+from src.services.work_admission import WorkflowDeadline
 from src.tools.optimizer import optimize_budget_allocation, validate_procurement_plan
+from src.utils.errors import safe_error
 from src.utils.formulas import RISK_URGENT, RISK_WARNING
 from src.utils.trace import ExecutionTracer, new_run_id
 
@@ -160,19 +163,24 @@ def _missing_price_item(forecast: dict, product: dict, branch: str, rank: int) -
 
 
 class PurchaserAgent:
-    def __init__(self, repo, persist: bool = True):
+    def __init__(self, repo, persist: bool = True, actor: ActorContext | None = None):
         self.repo = repo
         self.persist_enabled = persist
+        self.actor = actor or system_actor("purchaser-internal")
         self.tracer: ExecutionTracer | None = None
+        self.deadline: WorkflowDeadline | None = None
 
     def node_load_inputs(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("load_inputs")
         tr = self.tracer
         warnings = list(state.get("warnings", []))
         with tr.step("get_budget_state", f"periode {state['period']}") as rec:
             budget = load_budget_snapshot(self.repo, state["period"])
             rec["output"] = (
                 f"total Rp {budget.total_budget:,.0f}; used Rp {budget.used_budget:,.0f}; "
-                f"committed Rp {budget.committed_budget:,.0f}; tersedia Rp {budget.available_budget:,.0f}"
+                f"committed PO Rp {budget.committed_budget:,.0f}; "
+                f"allocated plan Rp {budget.allocated_budget:,.0f}; "
+                f"tersedia Rp {budget.available_budget:,.0f}"
             )
         warnings.extend(budget.warnings)
 
@@ -199,6 +207,10 @@ class PurchaserAgent:
                 if row.get("risk_level") in {RISK_URGENT, RISK_WARNING}
                 and float(row.get("restock_qty") or 0) > 0
             ]
+            if len(risk) > MAX_PURCHASER_ITEMS:
+                raise DataLimitExceeded(
+                    f"Purchaser menerima {len(risk)} item, melewati batas aman {MAX_PURCHASER_ITEMS}"
+                )
             rec["output"] = f"{len(forecasts)} forecast dibaca; {len(risk)} SKU-cabang masuk prioritas"
         return {
             "analyst_run_id": analyst_run_id,
@@ -208,6 +220,7 @@ class PurchaserAgent:
         }
 
     def node_prioritize(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("prioritize")
         tr = self.tracer
         forecasts = state.get("forecasts", [])
         if not forecasts:
@@ -220,6 +233,7 @@ class PurchaserAgent:
             ready: list[dict] = []
             missing: list[tuple[dict, dict, str]] = []
             for forecast in forecasts:
+                self.deadline.check("prioritize_item")
                 product = products.get(str(forecast["product_id"]), {})
                 branch = branches.get(str(forecast["branch_id"]), LABEL_NOT_FOUND)
                 reference = references.get(str(forecast["product_id"]))
@@ -259,6 +273,7 @@ class PurchaserAgent:
         return {"items": [*ranked, *missing_items]}
 
     def node_optimize(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("optimize")
         tr = self.tracer
         items = state.get("items", [])
         available = float(state["budget"]["available_budget"])
@@ -305,12 +320,14 @@ class PurchaserAgent:
         return {"items": optimized, "optimization": optimization, "status": result.status}
 
     def node_explain(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("explain")
         tr = self.tracer
         with tr.step("susun_reason_trace", "evidence Analyst + Supabase + optimizer") as rec:
             items = []
             analyst_run_id = state.get("analyst_run_id", LABEL_NOT_FOUND)
             available = float(state["budget"]["available_budget"])
             for item in state.get("items", []):
+                self.deadline.check("explain_item")
                 evidence = list(item.get("evidence", []))
                 if item.get("unit_price"):
                     evidence.extend([
@@ -322,7 +339,7 @@ class PurchaserAgent:
                         {"label": "Diskon kontrak valid", "value": round(100 * item.get("discount_fraction", 0), 2), "unit": "%", "source": f"Supabase contracts.id={item['reference_contract_id']}"},
                         {"label": "MOQ / pack", "value": f"{item['moq']} / {item['pack_size']}", "unit": "unit", "source": "Supabase contracts"},
                         {"label": "Priority score", "value": item.get("priority_score"), "source": "Python score_priority"},
-                        {"label": "Budget tersedia sebelum plan", "value": available, "unit": "Rp", "source": "Supabase budgets + purchase_orders"},
+                        {"label": "Budget tersedia sebelum plan", "value": available, "unit": "Rp", "source": "Supabase budgets + purchase_orders + procurement_budget_reservations"},
                     ])
                 decision = item.get("decision", "deferred")
                 margin_text = (
@@ -368,7 +385,7 @@ class PurchaserAgent:
                         "assumptions": [
                             "Harga Purchaser adalah harga referensi kontrak; kuotasi aktual diperiksa Negotiator dan budget_recheck pada fase berikutnya.",
                             "Skor = 45% urgensi + 25% margin + 20% turnover + 10% diskon valid.",
-                            "PO waiting approval dihitung committed; PO approved/sent masuk used budget tanpa hitung ganda.",
+                            "PO waiting approval dihitung committed; plan aktif dihitung allocated; PO approved/sent masuk used budget tanpa hitung ganda.",
                         ],
                     },
                 })
@@ -398,6 +415,7 @@ class PurchaserAgent:
         return {"items": items, "impact": impact}
 
     def node_validate(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("validate")
         tr = self.tracer
         available = float(state["budget"]["available_budget"])
         with tr.step("validate_procurement_plan", "budget + MOQ + pack + duplikasi") as rec:
@@ -415,6 +433,7 @@ class PurchaserAgent:
         }
 
     def node_persist(self, state: PurchaserState) -> PurchaserState:
+        self.deadline.check("persist")
         tr = self.tracer
         warnings = list(state.get("warnings", []))
         persisted = False
@@ -429,6 +448,7 @@ class PurchaserAgent:
                 "budget_total": state["budget"]["total_budget"],
                 "budget_used": state["budget"]["used_budget"],
                 "budget_committed": state["budget"]["committed_budget"],
+                "budget_allocated": state["budget"]["allocated_budget"],
                 "budget_available": state["budget"]["available_budget"],
                 "proposed_total": state.get("optimization", {}).get("proposed_total", 0),
                 "remaining_after_plan": max(
@@ -440,7 +460,9 @@ class PurchaserAgent:
                 "optimization_method": state.get("optimization", {}).get("method", "not_run"),
                 "impact": state.get("impact", {}),
                 "validation": state.get("validation", {}),
-                "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 - Python 3.9 compatible
+                "requested_by": None if self.actor.is_system else self.actor.user_id,
+                "requested_by_role": self.actor.role,
+                "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 - Python 3.10 compatible
             }
             item_fields = {
                 "product_id", "branch_id", "reference_contract_id", "rank", "decision",
@@ -455,7 +477,7 @@ class PurchaserAgent:
                 plan_id = stored_id
                 persisted = True
             except Exception as exc:  # noqa: BLE001
-                warnings.append(f"Simpan procurement plan gagal: {exc}")
+                warnings.append(f"Simpan procurement plan gagal ({safe_error(exc)}); lihat log server.")
 
         tr.log(
             "selesai",
@@ -468,9 +490,10 @@ class PurchaserAgent:
         )
         if self.persist_enabled:
             try:
-                self.repo.insert_agent_logs([step.to_db_row() for step in tr.steps])
+                audit = self.actor.audit_fields()
+                self.repo.insert_agent_logs([{**step.to_db_row(), **audit} for step in tr.steps])
             except Exception as exc:  # noqa: BLE001
-                warnings.append(f"Simpan agent_logs gagal: {exc}")
+                warnings.append(f"Simpan agent_logs gagal ({safe_error(exc)})")
         return {"persisted": persisted, "plan_id": plan_id, "warnings": warnings}
 
     def build_graph(self):
@@ -496,9 +519,11 @@ class PurchaserAgent:
         analyst_run_id: str | None = None,
         run_id: str | None = None,
     ) -> dict:
+        authorize(self.actor, PURCHASER_RUN_ROLES, "menjalankan Agent Purchaser")
         period = period or datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m")
         run_id = run_id or new_run_id("PUR")
         self.tracer = ExecutionTracer(AGENT_NAME, run_id)
+        self.deadline = WorkflowDeadline()
         initial: PurchaserState = {"run_id": run_id, "period": period, "warnings": []}
         if analyst_run_id:
             initial["analyst_run_id"] = analyst_run_id
@@ -508,13 +533,27 @@ class PurchaserAgent:
 
 
 def run_purchaser(
+    *,
+    actor: ActorContext,
     persist: bool = True,
     period: str | None = None,
     analyst_run_id: str | None = None,
+    read_client=None,
 ) -> dict:
-    from src.services.supabase_client import SupabaseRepository
+    from src.services.auth import AuthenticationRequired
+    from src.services.supabase_client import SupabaseRepository, get_client
 
-    return PurchaserAgent(SupabaseRepository(), persist=persist).run(
+    authorize(actor, PURCHASER_RUN_ROLES, "menjalankan Agent Purchaser")
+    if read_client is None:
+        if not actor.is_system:
+            raise AuthenticationRequired("Browser run wajib memakai Supabase client user terverifikasi")
+        read_client = get_client(write=True)
+
+    return PurchaserAgent(
+        SupabaseRepository(read_client=read_client),
+        persist=persist,
+        actor=actor,
+    ).run(
         period=period,
         analyst_run_id=analyst_run_id,
     )

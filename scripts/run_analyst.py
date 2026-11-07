@@ -12,6 +12,7 @@ import math
 import sys
 
 from src.agents.analyst import run_analyst
+from src.services.auth import system_actor
 from src.services.supabase_client import SupabaseNotConfigured, has_write_key
 
 
@@ -21,16 +22,28 @@ def _d(x) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="StockQu Agent Analyst")
-    ap.add_argument("--dry-run", action="store_true", help="jangan simpan ke Supabase")
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="baca dan hitung saja; jangan menulis Supabase, Sheets, forecast, atau log",
+    )
     ap.add_argument("--no-sheets", action="store_true", help="lewati sinkron Google Sheets")
     ap.add_argument("--json", action="store_true", help="output JSON ringkas (untuk n8n)")
     args = ap.parse_args()
 
     persist = not args.dry_run
-    if persist and not has_write_key():
-        print("PERINGATAN: SUPABASE_SERVICE_ROLE_KEY kosong, penulisan kemungkinan ditolak RLS.", file=sys.stderr)
+    if not has_write_key():
+        print(
+            "ERROR: SUPABASE_SERVICE_ROLE_KEY wajib untuk read CLI/cron; gunakan UI untuk read via JWT user.",
+            file=sys.stderr,
+        )
+        return 2
     try:
-        out = run_analyst(persist=persist, use_sheets=not args.no_sheets)
+        out = run_analyst(
+            actor=system_actor("analyst-cli"),
+            persist=persist,
+            use_sheets=not args.no_sheets,
+        )
     except SupabaseNotConfigured as exc:
         print(f"ERROR: {exc}. Copy .env.example ke .env lalu isi nilainya.", file=sys.stderr)
         return 2

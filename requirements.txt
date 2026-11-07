@@ -21,6 +21,7 @@ pulp==3.3.0
 # Google Sheets - Sumber stok real-time
 google-api-python-client>=2.150.0
 google-auth>=2.35.0
+google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 
 # Export PDF dan Excel - F-35

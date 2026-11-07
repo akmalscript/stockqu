@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, TypeVar
+from typing import TypeVar
+
+from src.utils.errors import safe_error
 
 T = TypeVar("T")
 
@@ -37,11 +40,11 @@ def call_with_retry(
         try:
             return fn()
         except NonRetryableError as exc:
-            tracker.errors.append(f"attempt {attempt}: {exc}")
+            tracker.errors.append(f"attempt {attempt}: {safe_error(exc)}")
             raise
         except Exception as exc:  # noqa: BLE001 - tool eksternal bisa gagal dengan apa saja
             last_exc = exc
-            tracker.errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
+            tracker.errors.append(f"attempt {attempt}: {safe_error(exc)}")
             if attempt < max_attempts:
                 sleep(base_delay * (2 ** (attempt - 1)))
     assert last_exc is not None

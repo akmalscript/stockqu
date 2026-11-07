@@ -1,6 +1,7 @@
 """Supabase client + repository StockQu.
 
-- Baca (Streamlit / Analyst): SUPABASE_ANON_KEY cukup (RLS select policy).
+- Baca UI memakai client JWT user agar RLS memfilter role/cabang.
+- Baca CLI/cron memakai service client yang diinjeksi explicit oleh runner agent.
 - Tulis (Agent Service: agent_logs, analyst_forecasts, sync_logs, inventory):
   pakai SUPABASE_SERVICE_ROLE_KEY yang HANYA disimpan server-side (.env / secrets), jangan di UI.
 """
@@ -12,7 +13,12 @@ from functools import lru_cache
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.config import get_setting
+from src.config import (
+    MAX_DATA_ROWS,
+    MAX_SALES_HISTORY_ROWS,
+    PROVIDER_REQUEST_TIMEOUT_SECONDS,
+    get_setting,
+)
 from src.utils.retry import NonRetryableError
 
 PAGE_SIZE = 1000  # batas default PostgREST max-rows
@@ -22,19 +28,29 @@ class SupabaseNotConfigured(NonRetryableError):
     pass
 
 
+class DataLimitExceeded(NonRetryableError):
+    pass
+
+
 @lru_cache(maxsize=2)
 def get_client(write: bool = False):
-    """Buat client Supabase. write=True memakai service role key jika tersedia."""
-    from supabase import create_client
+    """Buat client Supabase; write tidak pernah fallback ke anon/publishable key."""
+    from supabase import ClientOptions, create_client
 
     url = get_setting("SUPABASE_URL")
-    key = None
-    if write:
-        key = get_setting("SUPABASE_SERVICE_ROLE_KEY")
-    key = key or get_setting("SUPABASE_ANON_KEY")
+    key = get_setting("SUPABASE_SERVICE_ROLE_KEY") if write else get_setting("SUPABASE_ANON_KEY")
     if not url or not key:
-        raise SupabaseNotConfigured("SUPABASE_URL / SUPABASE_ANON_KEY belum diisi di .env atau secrets")
-    return create_client(url, key)
+        required = "SUPABASE_SERVICE_ROLE_KEY" if write else "SUPABASE_ANON_KEY"
+        raise SupabaseNotConfigured(f"SUPABASE_URL / {required} belum diisi di .env atau secrets")
+    return create_client(
+        url,
+        key,
+        options=ClientOptions(
+            postgrest_client_timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS,
+            storage_client_timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS,
+            function_client_timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS,
+        ),
+    )
 
 
 def has_write_key() -> bool:
@@ -51,7 +67,9 @@ class SupabaseRepository:
     @property
     def read(self):
         if self._read is None:
-            self._read = get_client(write=False)
+            raise SupabaseNotConfigured(
+                "Read client wajib berupa JWT user terverifikasi atau service client CLI/cron"
+            )
         return self._read
 
     @property
@@ -62,13 +80,15 @@ class SupabaseRepository:
 
     # ---------- helpers ----------
     @staticmethod
-    def _fetch_all(query_factory) -> list[dict]:
+    def _fetch_all(query_factory, max_rows: int = MAX_DATA_ROWS) -> list[dict]:
         rows: list[dict] = []
         start = 0
         while True:
             res = query_factory().range(start, start + PAGE_SIZE - 1).execute()
             batch = res.data or []
             rows.extend(batch)
+            if len(rows) > max_rows:
+                raise DataLimitExceeded(f"Query melewati batas aman {max_rows} baris")
             if len(batch) < PAGE_SIZE:
                 return rows
             start += PAGE_SIZE
@@ -107,6 +127,15 @@ class SupabaseRepository:
             .order("created_at")
         )
 
+    def fetch_active_budget_reservations(self, period: str) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("procurement_budget_reservations")
+            .select("plan_id, period, amount, status, created_at")
+            .eq("period", period)
+            .eq("status", "active")
+            .order("created_at")
+        )
+
     def fetch_reference_contracts(self) -> list[dict]:
         """Harga referensi P2; pemilihan supplier/kuotasi aktual baru dilakukan P3."""
         return self._fetch_all(
@@ -130,7 +159,8 @@ class SupabaseRepository:
             .select("product_id, branch_id, sale_date, qty")
             .gte("sale_date", start.isoformat())
             .lte("sale_date", as_of.isoformat())
-            .order("id")
+            .order("id"),
+            max_rows=MAX_SALES_HISTORY_ROWS,
         )
 
     # ---------- writes ----------

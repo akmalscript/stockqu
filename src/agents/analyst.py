@@ -17,14 +17,22 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import date, datetime, timezone
-from typing import Any, Callable, TypedDict
+from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from src.config import HISTORY_DAYS, LABEL_NOT_FOUND, SAFETY_DAYS_DEFAULT
+from src.config import (
+    HISTORY_DAYS,
+    LABEL_NOT_FOUND,
+    MAX_FORECAST_PAIRS,
+    SAFETY_DAYS_DEFAULT,
+)
+from src.services.auth import ANALYST_RUN_ROLES, ActorContext, authorize, system_actor
 from src.services.inventory_sync import sync_inventory_two_way
-from src.services.supabase_client import to_jsonable
+from src.services.supabase_client import DataLimitExceeded, to_jsonable
+from src.services.work_admission import WorkflowDeadline
 from src.tools.forecasting import (
     build_daily_series,
     forecast_demand,
@@ -32,6 +40,7 @@ from src.tools.forecasting import (
     stockout_range,
 )
 from src.utils import formulas as F
+from src.utils.errors import safe_error
 from src.utils.retry import RetryResult, call_with_retry
 from src.utils.trace import ExecutionTracer, new_run_id
 
@@ -74,15 +83,25 @@ def _fmt_pct(x: float | None) -> str:
 class AnalystAgent:
     """Bungkus LangGraph Analyst. `repo` = SupabaseRepository, `sheets_factory` -> SheetsClient | None."""
 
-    def __init__(self, repo, sheets_factory: Callable[[], Any] | None = None, persist: bool = True, sleep=None):
+    def __init__(
+        self,
+        repo,
+        sheets_factory: Callable[[], Any] | None = None,
+        persist: bool = True,
+        sleep=None,
+        actor: ActorContext | None = None,
+    ):
         self.repo = repo
         self.sheets_factory = sheets_factory
         self.persist_enabled = persist
         self.sleep = sleep
+        self.actor = actor or system_actor("analyst-internal")
         self.tracer: ExecutionTracer | None = None
+        self.deadline: WorkflowDeadline | None = None
 
     # ------------------------------------------------------------------ nodes
     def node_sync_stock(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("sync_stock")
         tr = self.tracer
         warnings = list(state.get("warnings", []))
         sheets = None
@@ -90,12 +109,20 @@ class AnalystAgent:
             try:
                 sheets = self.sheets_factory()
             except Exception as exc:  # noqa: BLE001 - kredensial belum ada -> fallback
-                tr.log("baca_sheets", "skipped", input_summary="Google Sheets", error_message=str(exc),
+                tr.log("baca_sheets", "skipped", input_summary="Google Sheets", error_message=safe_error(exc),
                        output_summary="Sheets belum dikonfigurasi, pakai stok Supabase")
-                warnings.append(f"Google Sheets tidak dipakai: {exc}")
+                warnings.append(f"Google Sheets tidak dipakai ({safe_error(exc)})")
         if sheets is not None:
             with tr.step("sinkron_sheets_supabase", "Sheets tab stok <-> Supabase inventory") as rec:
-                report = sync_inventory_two_way(self.repo, sheets, state["run_id"], sleep=self.sleep)
+                report = sync_inventory_two_way(
+                    self.repo,
+                    sheets,
+                    state["run_id"],
+                    sleep=self.sleep,
+                    write_enabled=self.persist_enabled,
+                    actor_id=self.actor.user_id,
+                    actor_role=self.actor.role,
+                )
                 rec["attempts"] = report.attempts_read or 1
                 rec["output"] = (
                     f"status {report.status}: dibaca {report.rows_read}, ke Supabase {report.rows_written_supabase}, "
@@ -132,6 +159,7 @@ class AnalystAgent:
         return {"stock": stock, "stock_source": "Supabase inventory", "warnings": warnings}
 
     def node_load_history(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("load_history")
         tr = self.tracer
         retry_kw = {"sleep": self.sleep} if self.sleep else {}
         try:
@@ -139,11 +167,18 @@ class AnalystAgent:
                 tracker = RetryResult()
                 products = call_with_retry(self.repo.fetch_products, result=tracker, **retry_kw)
                 branches = call_with_retry(self.repo.fetch_branches, result=tracker, **retry_kw)
+                pair_count = len(products) * len(branches)
+                if pair_count > MAX_FORECAST_PAIRS:
+                    raise DataLimitExceeded(
+                        f"Forecast {pair_count} pasangan melewati batas aman {MAX_FORECAST_PAIRS}"
+                    )
+                if len(branches) < 3:
+                    raise DataLimitExceeded("StockQu memerlukan minimal 3 cabang terpisah")
                 rec["attempts"] = tracker.attempts
                 rec["output"] = f"{len(products)} produk, {len(branches)} cabang"
         except Exception as exc:  # noqa: BLE001
             return {"products": [], "branches": [], "sales": {}, "status": "load_failed",
-                    "warnings": [*state.get("warnings", []), f"Baca master data gagal: {exc}"]}
+                    "warnings": [*state.get("warnings", []), f"Baca master data gagal ({safe_error(exc)})"]}
         with tr.step("baca_histori_penjualan", f"sales_history {HISTORY_DAYS} hari") as rec:
             no_hist = {"products": products, "branches": branches, "sales": {}, "status": "no_history"}
             try:
@@ -151,7 +186,7 @@ class AnalystAgent:
                 rows = self.repo.fetch_sales_history(as_of, HISTORY_DAYS) if as_of else []
             except Exception as exc:  # noqa: BLE001 - mis. tabel belum dibuat (PGRST205)
                 rec["status"], rec["output"] = "failed", LABEL_NOT_FOUND
-                rec["error"] = f"Baca sales_history gagal (jalankan migrasi 002 + seed?): {exc}"
+                rec["error"] = f"Baca sales_history gagal ({safe_error(exc)}; cek migrasi 002 + seed)"
                 return no_hist
             if as_of is None or not rows:
                 rec["status"], rec["output"] = "failed", LABEL_NOT_FOUND
@@ -172,6 +207,7 @@ class AnalystAgent:
         }
 
     def node_forecast(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("forecast")
         tr = self.tracer
         as_of = date.fromisoformat(state["as_of"])
         win = state["history_window"]
@@ -180,6 +216,7 @@ class AnalystAgent:
         with tr.step("python_forecasting_tool", f"{len(state['products'])} SKU x {len(branches)} cabang") as rec:
             for p in state["products"]:
                 for bid, bname in branches.items():
+                    self.deadline.check("forecast_pair")
                     key = _key(p["id"], bid)
                     stock_row = state["stock"].get(key)
                     sales = state["sales"].get(key, [])
@@ -238,6 +275,7 @@ class AnalystAgent:
         return {"results": results}
 
     def node_detect_risk(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("detect_risk")
         tr = self.tracer
         with tr.step("deteksi_risiko_stockout", "ambang URGENT <= 4 hari, RISIKO <= 7 hari") as rec:
             results = []
@@ -262,6 +300,7 @@ class AnalystAgent:
         return {"results": results, "risk_items": [_risk_view(r) for r in risk]}
 
     def node_explain(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("explain")
         tr = self.tracer
         with tr.step("susun_reason_trace", "evidence + asumsi per SKU-cabang") as rec:
             results = [{**r, "reason_trace": build_reason_trace(r, state.get("stock_source", ""))} for r in state["results"]]
@@ -274,6 +313,7 @@ class AnalystAgent:
         return {"results": results, "risk_items": risk_items, "status": "completed"}
 
     def node_persist(self, state: AnalystState) -> AnalystState:
+        self.deadline.check("persist")
         tr = self.tracer
         warnings = list(state.get("warnings", []))
         persisted = False
@@ -285,16 +325,17 @@ class AnalystAgent:
                     rec["output"] = f"{n} baris forecast disimpan"
                 persisted = True
             except Exception as exc:  # noqa: BLE001
-                warnings.append(f"Simpan analyst_forecasts gagal: {exc}")
+                warnings.append(f"Simpan analyst_forecasts gagal ({safe_error(exc)})")
         final_status = state.get("status") or "completed"
         tr.log("selesai", "success" if final_status == "completed" else "failed",
                input_summary=f"run {state['run_id']}",
                output_summary=f"status {final_status}, {len(state.get('risk_items', []))} item berisiko")
         if self.persist_enabled:
             try:
-                self.repo.insert_agent_logs([s.to_db_row() for s in tr.steps])
+                audit = self.actor.audit_fields()
+                self.repo.insert_agent_logs([{**s.to_db_row(), **audit} for s in tr.steps])
             except Exception as exc:  # noqa: BLE001
-                warnings.append(f"Simpan agent_logs gagal: {exc}")
+                warnings.append(f"Simpan agent_logs gagal ({safe_error(exc)})")
         return {"persisted": persisted, "warnings": warnings, "status": final_status}
 
     # ------------------------------------------------------------------ graph
@@ -320,8 +361,10 @@ class AnalystAgent:
         return g.compile()
 
     def run(self, as_of: date | None = None, run_id: str | None = None) -> dict:
+        authorize(self.actor, ANALYST_RUN_ROLES, "menjalankan Agent Analyst")
         run_id = run_id or new_run_id("ANL")
         self.tracer = ExecutionTracer(AGENT_NAME, run_id)
+        self.deadline = WorkflowDeadline()
         init: AnalystState = {"run_id": run_id, "warnings": []}
         if as_of:
             init["as_of"] = as_of.isoformat()
@@ -445,17 +488,36 @@ def _to_db_row(run_id: str, r: dict) -> dict:
         "data_quality": r["reason_trace"].get("data_quality", {}),
         "reason_trace": {**r["reason_trace"], "projection": fc["projection"][:30], "projection_start": fc["projection_start"],
                          "forecast_warning": r.get("forecast_warning", False)},
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),  # noqa: UP017 - Python 3.10 compatible
     })
 
 
-def run_analyst(persist: bool = True, use_sheets: bool = True, as_of: date | None = None) -> dict:
+def run_analyst(
+    *,
+    actor: ActorContext,
+    persist: bool = True,
+    use_sheets: bool = True,
+    as_of: date | None = None,
+    read_client=None,
+) -> dict:
     """Entry point untuk Streamlit / CLI / n8n (P4)."""
+    from src.services.auth import AuthenticationRequired
     from src.services.sheets_client import SheetsClient, sheets_configured
-    from src.services.supabase_client import SupabaseRepository
+    from src.services.supabase_client import SupabaseRepository, get_client
+
+    authorize(actor, ANALYST_RUN_ROLES, "menjalankan Agent Analyst")
+    if read_client is None:
+        if not actor.is_system:
+            raise AuthenticationRequired("Browser run wajib memakai Supabase client user terverifikasi")
+        read_client = get_client(write=True)
 
     factory = SheetsClient if (use_sheets and sheets_configured()) else None
     if use_sheets and factory is None:
-        def factory():  # noqa: E306 - catat alasan skip ke trace
+        def factory():
             raise RuntimeError("GOOGLE_SHEETS_SPREADSHEET_ID / service account belum diisi")
-    return AnalystAgent(SupabaseRepository(), sheets_factory=factory, persist=persist).run(as_of=as_of)
+    return AnalystAgent(
+        SupabaseRepository(read_client=read_client),
+        sheets_factory=factory,
+        persist=persist,
+        actor=actor,
+    ).run(as_of=as_of)

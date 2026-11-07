@@ -19,6 +19,9 @@ class PurchaserRepo:
     def fetch_purchase_orders_for_period(self, period):
         return []
 
+    def fetch_active_budget_reservations(self, period):
+        return []
+
     def latest_analyst_run_id(self):
         return "ANL-TEST"
 
@@ -91,6 +94,7 @@ def test_purchaser_graph_persists_grounded_budget_safe_plan():
     assert {item["branch_id"] for item in output["items"]} == {"b1"}
     assert all(item["reason_trace"]["evidence"] for item in output["items"])
     assert any(log["tool_name"] == "optimize_budget_allocation" for log in repo.logs)
+    assert repo.persisted[0]["requested_by_role"] == "system_agent"
 
 
 def test_purchaser_defers_item_when_reference_price_missing():

@@ -70,17 +70,48 @@ create table if not exists analyst_forecasts (
 create index if not exists idx_analyst_forecasts_run on analyst_forecasts (run_id);
 create index if not exists idx_analyst_forecasts_created on analyst_forecasts (created_at desc);
 
--- 4. RLS - baca boleh (anon + authenticated, sama seperti tabel P0), tulis hanya service_role.
---    Kebijakan per role (Super Admin / Warehouse Manager / Purchasing Staff) diperketat di P5.
+-- 4. RLS - tidak ada anonymous read. User wajib Supabase Auth dan role berasal
+--    dari app_metadata (bukan user_metadata). Write hanya service_role.
 alter table sales_history enable row level security;
 alter table sync_logs enable row level security;
 alter table analyst_forecasts enable row level security;
 
 drop policy if exists "read sales_history" on sales_history;
-create policy "read sales_history" on sales_history for select to anon, authenticated using (true);
+create policy "read sales_history" on sales_history for select to authenticated using (
+  coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'super_admin'
+  or (
+    coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') in
+      ('warehouse_manager', 'purchasing_staff', 'procurement_manager')
+    and branch_id::text in (
+      select jsonb_array_elements_text(
+        coalesce((select auth.jwt() -> 'app_metadata' -> 'branch_ids'), '[]'::jsonb)
+      )
+    )
+  )
+);
 
 drop policy if exists "read sync_logs" on sync_logs;
-create policy "read sync_logs" on sync_logs for select to anon, authenticated using (true);
+create policy "read sync_logs" on sync_logs for select to authenticated using (
+  coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') in
+    ('super_admin', 'warehouse_manager', 'purchasing_staff', 'procurement_manager')
+);
 
 drop policy if exists "read analyst_forecasts" on analyst_forecasts;
-create policy "read analyst_forecasts" on analyst_forecasts for select to anon, authenticated using (true);
+create policy "read analyst_forecasts" on analyst_forecasts for select to authenticated using (
+  coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') = 'super_admin'
+  or (
+    coalesce((select auth.jwt() -> 'app_metadata' ->> 'role'), '') in
+      ('warehouse_manager', 'purchasing_staff', 'procurement_manager')
+    and branch_id::text in (
+      select jsonb_array_elements_text(
+        coalesce((select auth.jwt() -> 'app_metadata' -> 'branch_ids'), '[]'::jsonb)
+      )
+    )
+  )
+);
+
+revoke all on table sales_history, sync_logs, analyst_forecasts from anon, authenticated;
+grant select on table sales_history, sync_logs, analyst_forecasts to authenticated;
+grant all on table sales_history, sync_logs, analyst_forecasts to service_role;
+grant usage, select on sequence sales_history_id_seq, sync_logs_id_seq,
+  analyst_forecasts_id_seq to service_role;

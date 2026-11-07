@@ -11,9 +11,11 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
+from src.utils.errors import safe_error
+
 
 def new_run_id(prefix: str = "RUN") -> str:
-    now = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    now = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")  # noqa: UP017 - Python 3.10 compatible
     return f"{prefix}-{now}-{uuid.uuid4().hex[:6].upper()}"
 
 
@@ -28,7 +30,9 @@ class TraceStep:
     error_message: str | None = None
     duration_ms: int = 0
     attempts: int = 1
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 compatible
+    )
 
     def to_db_row(self) -> dict:
         """Map ke kolom agent_logs. Durasi & attempts disisipkan di output_summary (kolom P0 belum ada)."""
@@ -72,7 +76,7 @@ class ExecutionTracer:
                 "failed",
                 input_summary=input_summary,
                 output_summary=rec.get("output", ""),
-                error_message=f"{type(exc).__name__}: {exc}",
+                error_message=safe_error(exc),
                 duration_ms=int((time.perf_counter() - started) * 1000),
                 attempts=rec.get("attempts", 1),
             )

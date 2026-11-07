@@ -13,45 +13,46 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.config import LABEL_NOT_FOUND, LABEL_SIMULASI, RISK_MAX_DAYS, URGENT_MAX_DAYS
+from src.services.auth import (
+    ANALYST_RUN_ROLES,
+    ANALYST_VIEW_ROLES,
+    require_streamlit_access,
+)
 from src.services.supabase_client import SupabaseRepository, has_write_key
+from src.services.work_admission import (
+    WorkflowDeadlineExceeded,
+    WorkRejected,
+    work_admission,
+)
 from src.utils import formulas as F
 
 TEAL, NAVY, MINT = "#0E7C61", "#1E2A44", "#EFF4F1"
 
 st.set_page_config(page_title="StockQu - Prediksi & Risiko", page_icon="📦", layout="wide")
+actor, user_client = require_streamlit_access(ANALYST_VIEW_ROLES, "melihat prediksi dan risiko")
+repository = SupabaseRepository(read_client=user_client)
 st.title("Prediksi & Risiko Stockout")
 st.caption("Agent 1 - The Analyst | histori 6 bulan | deteksi risiko habis 4-7 hari | stok per cabang, tidak dijumlahkan")
 
 
-@st.cache_resource
-def repo() -> SupabaseRepository:
-    return SupabaseRepository()
-
-
-@st.cache_data(ttl=300)
 def master():
-    r = repo()
-    return r.fetch_products(), r.fetch_branches()
+    return repository.fetch_products(), repository.fetch_branches()
 
 
-@st.cache_data(ttl=30)
 def latest_run():
-    r = repo()
-    run_id = r.latest_analyst_run_id()
+    run_id = repository.latest_analyst_run_id()
     if not run_id:
         return None, [], []
-    return run_id, r.fetch_forecasts(run_id), r.fetch_agent_logs(run_id)
+    return run_id, repository.fetch_forecasts(run_id), repository.fetch_agent_logs(run_id)
 
 
-@st.cache_data(ttl=60)
 def sales_series(product_id: str, branch_id: str, start: date, end: date):
-    return repo().fetch_sales_series(product_id, branch_id, start, end)
+    return repository.fetch_sales_series(product_id, branch_id, start, end)
 
 
-@st.cache_data(ttl=300)
 def dummy_flag() -> bool:
     try:
-        return repo().has_dummy_sales()
+        return repository.has_dummy_sales()
     except Exception:  # noqa: BLE001
         return False
 
@@ -68,18 +69,29 @@ def _days_txt(x) -> str:
 with st.sidebar:
     st.header("Agent Analyst")
     can_write = has_write_key()
+    can_run = actor.role in ANALYST_RUN_ROLES
+    if not can_run:
+        st.caption("Role ini hanya boleh melihat hasil Analyst.")
     if not can_write:
         st.caption("SUPABASE_SERVICE_ROLE_KEY belum diisi: hasil run tidak tersimpan (hanya tampil sementara).")
-    if st.button("Jalankan Agent Analyst", type="primary", width="stretch"):
+    if st.button("Jalankan Agent Analyst", type="primary", width="stretch", disabled=not can_run):
         from src.agents.analyst import run_analyst
 
-        with st.status("Analyst berjalan: sinkron stok, baca histori, forecast, deteksi risiko...", expanded=False) as s:
-            out = run_analyst(persist=can_write)
-            s.update(label=f"Selesai: status {out['status']}", state="complete" if out["status"] == "completed" else "error")
-        st.session_state["analyst_preview"] = None if out.get("persisted") else out
-        for w in out.get("warnings", []):
-            st.warning(w)
-        latest_run.clear()
+        try:
+            with work_admission.admit(actor, "analyst"), st.status(
+                "Analyst berjalan: sinkron stok, baca histori, forecast, deteksi risiko...",
+                expanded=False,
+            ) as s:
+                out = run_analyst(actor=actor, persist=can_write, read_client=user_client)
+                s.update(
+                    label=f"Selesai: status {out['status']}",
+                    state="complete" if out["status"] == "completed" else "error",
+                )
+            st.session_state["analyst_preview"] = None if out.get("persisted") else out
+            for warning in out.get("warnings", []):
+                st.warning(warning)
+        except (WorkRejected, WorkflowDeadlineExceeded, PermissionError) as exc:
+            st.error(str(exc))
 
 # ------------------------------------------------------------------ load data
 try:
@@ -94,7 +106,7 @@ except Exception as exc:  # noqa: BLE001
             "Lalu muat ulang halaman ini."
         )
     else:
-        st.error(f"{LABEL_NOT_FOUND} - Supabase tidak bisa dibaca: {exc}")
+        st.error(f"{LABEL_NOT_FOUND} - Supabase tidak bisa dibaca. Periksa konfigurasi dan log server.")
     st.stop()
 
 pmap = {p["id"]: p for p in products}
@@ -184,9 +196,9 @@ else:
     fig.add_bar(y=labels, x=view["dts_forecast"], orientation="h", name="Forecast tren", marker_color=NAVY)
     for x, txt in ((URGENT_MAX_DAYS, "URGENT 4 hari"), (RISK_MAX_DAYS, "Batas risiko 7 hari")):
         fig.add_vline(x=x, line_dash="dash", line_color=NAVY, annotation_text=txt, annotation_position="top")
-    fig.update_layout(barmode="group", height=120 + 45 * len(view), margin=dict(l=10, r=10, t=30, b=10),
-                      xaxis_title="Hari sampai stok habis", yaxis=dict(autorange="reversed"),
-                      plot_bgcolor="#FFFFFF", legend=dict(orientation="h", y=-0.2))
+    fig.update_layout(barmode="group", height=120 + 45 * len(view), margin={"l": 10, "r": 10, "t": 30, "b": 10},
+                      xaxis_title="Hari sampai stok habis", yaxis={"autorange": "reversed"},
+                      plot_bgcolor="#FFFFFF", legend={"orientation": "h", "y": -0.2})
     st.plotly_chart(fig, width="stretch")
 
 # ------------------------------------------------------------------ grafik forecast per item
@@ -206,29 +218,29 @@ with g1:
     fig = go.Figure()
     if hist:
         fig.add_scatter(x=[h["sale_date"] for h in hist], y=[h["qty"] for h in hist], mode="lines",
-                        name="Penjualan aktual (60 hari)", line=dict(color=TEAL))
+                        name="Penjualan aktual (60 hari)", line={"color": TEAL})
     else:
         st.caption(f"Histori: {LABEL_NOT_FOUND}")
     fig.add_scatter(x=[proj_start + timedelta(days=i) for i in range(len(projection))], y=projection, mode="lines",
-                    name="Forecast", line=dict(color=NAVY, dash="dash"))
+                    name="Forecast", line={"color": NAVY, "dash": "dash"})
     fig.add_hline(y=item.avg_harian, line_dash="dot", line_color=NAVY, annotation_text="Rata-rata 180 hari")
     fig.update_layout(title="Permintaan harian: aktual vs forecast", height=360, plot_bgcolor="#FFFFFF",
-                      margin=dict(l=10, r=10, t=40, b=10), legend=dict(orientation="h", y=-0.25))
+                      margin={"l": 10, "r": 10, "t": 40, "b": 10}, legend={"orientation": "h", "y": -0.25})
     st.plotly_chart(fig, width="stretch")
 with g2:
     remaining, days_axis, level = [], [], float(item.stok)
     fc_days = item.dts_forecast
-    horizon = 21 if fc_days is None or pd.isna(fc_days) or math.isinf(fc_days) else min(21, int(math.ceil(fc_days)) + 4)
+    horizon = 21 if fc_days is None or pd.isna(fc_days) or math.isinf(fc_days) else min(21, math.ceil(fc_days) + 4)
     for i, demand in enumerate([0.0, *projection[:horizon]]):
         level = max(level - demand, 0.0)
         remaining.append(level)
         days_axis.append(as_of + timedelta(days=i))
     fig = go.Figure()
-    fig.add_scatter(x=days_axis, y=remaining, mode="lines+markers", name="Proyeksi stok", line=dict(color=TEAL),
+    fig.add_scatter(x=days_axis, y=remaining, mode="lines+markers", name="Proyeksi stok", line={"color": TEAL},
                     fill="tozeroy", fillcolor=MINT)
     fig.add_hline(y=item.safety_stock, line_dash="dash", line_color=NAVY, annotation_text="Safety stock")
     fig.update_layout(title=f"Proyeksi sisa stok {item.cabang} (tanpa restock)", height=360, plot_bgcolor="#FFFFFF",
-                      margin=dict(l=10, r=10, t=40, b=10), showlegend=False)
+                      margin={"l": 10, "r": 10, "t": 40, "b": 10}, showlegend=False)
     st.plotly_chart(fig, width="stretch")
 
 # ------------------------------------------------------------------ Reason Trace
@@ -266,7 +278,7 @@ else:
 
 with st.expander("Log sinkron Google Sheets <-> Supabase"):
     try:
-        sync = repo().fetch_sync_logs()
+        sync = repository.fetch_sync_logs()
         st.dataframe(pd.DataFrame(sync), hide_index=True, width="stretch") if sync else st.caption(LABEL_NOT_FOUND)
-    except Exception as exc:  # noqa: BLE001
-        st.caption(f"{LABEL_NOT_FOUND}: {exc}")
+    except Exception:  # noqa: BLE001
+        st.caption(f"{LABEL_NOT_FOUND}: histori tidak dapat dimuat")

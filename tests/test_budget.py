@@ -35,3 +35,18 @@ def test_budget_policy_fallback_when_period_missing():
     assert snapshot.total_budget == 50_000_000
     assert snapshot.available_budget == 50_000_000
     assert any("tidak ditemukan" in warning for warning in snapshot.warnings)
+
+
+def test_budget_subtracts_active_plan_reservations():
+    snapshot = calculate_budget_snapshot(
+        "2026-11",
+        {"total_budget": 50_000_000, "used_budget": 10_000_000},
+        [{"status": "waiting_approval", "total_amount": 5_000_000}],
+        [
+            {"status": "active", "amount": 12_000_000},
+            {"status": "released", "amount": 8_000_000},
+        ],
+    )
+    assert snapshot.allocated_budget == 12_000_000
+    assert snapshot.active_plan_count == 1
+    assert snapshot.available_budget == 23_000_000

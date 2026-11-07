@@ -9,11 +9,23 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.config import BUDGET_MONTHLY, LABEL_NOT_FOUND, LABEL_SIMULASI
+from src.services.auth import (
+    PURCHASER_RUN_ROLES,
+    PURCHASER_VIEW_ROLES,
+    require_streamlit_access,
+)
 from src.services.supabase_client import SupabaseRepository, has_write_key
+from src.services.work_admission import (
+    WorkflowDeadlineExceeded,
+    WorkRejected,
+    work_admission,
+)
 
 TEAL, NAVY, MINT, WHITE = "#0E7C61", "#1E2A44", "#EFF4F1", "#FFFFFF"
 
 st.set_page_config(page_title="StockQu - Rencana Pembelian", page_icon="📦", layout="wide")
+actor, user_client = require_streamlit_access(PURCHASER_VIEW_ROLES, "melihat rencana pembelian")
+repository = SupabaseRepository(read_client=user_client)
 st.title("Rencana Pembelian")
 st.caption(
     "Agent 2 - The Purchaser | budget bulanan Rp 50.000.000 | "
@@ -21,20 +33,11 @@ st.caption(
 )
 
 
-@st.cache_resource
-def repo() -> SupabaseRepository:
-    return SupabaseRepository()
-
-
-@st.cache_data(ttl=60)
 def master_data():
-    repository = repo()
     return repository.fetch_products(), repository.fetch_branches()
 
 
-@st.cache_data(ttl=30)
 def latest_plan():
-    repository = repo()
     run_id = repository.latest_purchaser_run_id()
     if not run_id:
         return None, None, [], []
@@ -44,10 +47,9 @@ def latest_plan():
     return run_id, plan, repository.fetch_procurement_plan_items(plan["id"]), repository.fetch_agent_logs(run_id)
 
 
-@st.cache_data(ttl=300)
 def dummy_flag() -> bool:
     try:
-        return repo().has_dummy_sales()
+        return repository.has_dummy_sales()
     except Exception:  # noqa: BLE001
         return False
 
@@ -64,9 +66,12 @@ with st.sidebar:
         help="Format YYYY-MM. Budget tetap dibatasi Rp 50.000.000 per bulan.",
     )
     can_write = has_write_key()
+    can_run = actor.role in PURCHASER_RUN_ROLES
+    if not can_run:
+        st.caption("Role ini hanya boleh melihat rencana pembelian.")
     if not can_write:
         st.caption("SUPABASE_SERVICE_ROLE_KEY belum diisi: hasil hanya preview dan tidak tersimpan.")
-    if st.button("Jalankan Agent Purchaser", type="primary", width="stretch"):
+    if st.button("Jalankan Agent Purchaser", type="primary", width="stretch", disabled=not can_run):
         from src.agents.purchaser import run_purchaser
 
         try:
@@ -74,14 +79,24 @@ with st.sidebar:
         except ValueError:
             st.error("Periode harus berformat YYYY-MM, contoh 2026-11.")
         else:
-            with st.status("Purchaser membaca Analyst, menghitung budget, dan menjalankan optimizer...", expanded=False) as status:
-                output = run_purchaser(persist=can_write, period=period)
-                state = "complete" if output.get("status") != "failed" else "error"
-                status.update(label=f"Selesai: status {output.get('status')}", state=state)
-            st.session_state["purchaser_preview"] = None if output.get("persisted") else output
-            for warning in output.get("warnings", []):
-                st.warning(warning)
-            latest_plan.clear()
+            try:
+                with work_admission.admit(actor, "purchaser"), st.status(
+                    "Purchaser membaca Analyst, menghitung budget, dan menjalankan optimizer...",
+                    expanded=False,
+                ) as status:
+                    output = run_purchaser(
+                        actor=actor,
+                        persist=can_write,
+                        period=period,
+                        read_client=user_client,
+                    )
+                    state = "complete" if output.get("status") != "failed" else "error"
+                    status.update(label=f"Selesai: status {output.get('status')}", state=state)
+                st.session_state["purchaser_preview"] = None if output.get("persisted") else output
+                for warning in output.get("warnings", []):
+                    st.warning(warning)
+            except (WorkRejected, WorkflowDeadlineExceeded, PermissionError) as exc:
+                st.error(str(exc))
 
 
 try:
@@ -95,7 +110,7 @@ except Exception as exc:  # noqa: BLE001
             "`supabase/migrations/20261107111649_p2_purchaser.sql` di Supabase, lalu muat ulang halaman."
         )
     else:
-        st.error(f"{LABEL_NOT_FOUND} - Supabase tidak bisa dibaca: {exc}")
+        st.error(f"{LABEL_NOT_FOUND} - Supabase tidak bisa dibaca. Periksa konfigurasi dan log server.")
     st.stop()
 
 preview = st.session_state.get("purchaser_preview")
@@ -111,6 +126,7 @@ if preview and preview.get("analyst_run_id"):
         "budget_total": budget["total_budget"],
         "budget_used": budget["used_budget"],
         "budget_committed": budget["committed_budget"],
+        "budget_allocated": budget["allocated_budget"],
         "budget_available": budget["available_budget"],
         "proposed_total": optimization.get("proposed_total", 0),
         "remaining_after_plan": max(
@@ -144,14 +160,15 @@ st.caption(
 )
 
 # KPI mengikuti hierarki ringkas: sumber budget -> usulan -> sisa.
-k1, k2, k3 = st.columns(3)
+k1, k2, k3, k4 = st.columns(4)
 k1.metric("Budget bulanan", rupiah(plan["budget_total"]), help="Plafon keras maksimal Rp 50.000.000")
 k2.metric("Sudah dipakai", rupiah(plan["budget_used"]), help="Sumber: Supabase budgets.used_budget")
 k3.metric("PO committed", rupiah(plan["budget_committed"]), help="PO waiting approval bulan berjalan")
-k4, k5, k6 = st.columns(3)
-k4.metric("Tersedia sebelum plan", rupiah(plan["budget_available"]))
-k5.metric("Usulan Purchaser", rupiah(plan["proposed_total"]))
-k6.metric("Sisa setelah plan", rupiah(plan["remaining_after_plan"]))
+k4.metric("Plan allocated", rupiah(plan.get("budget_allocated", 0)), help="Reservasi plan aktif periode ini")
+k5, k6, k7 = st.columns(3)
+k5.metric("Tersedia sebelum plan", rupiah(plan["budget_available"]))
+k6.metric("Usulan Purchaser", rupiah(plan["proposed_total"]))
+k7.metric("Sisa setelah plan", rupiah(plan["remaining_after_plan"]))
 
 used_after = float(plan["budget_total"]) - float(plan["remaining_after_plan"])
 utilization = 0.0 if not float(plan["budget_total"]) else 100 * used_after / float(plan["budget_total"])

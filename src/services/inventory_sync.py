@@ -11,15 +11,20 @@ Aturan:
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from src.utils.errors import safe_error
 from src.utils.retry import RetryResult, call_with_retry
 
 
 @dataclass
 class SyncReport:
     run_id: str
+    write_enabled: bool = True
+    actor_id: str | None = None
+    actor_role: str | None = None
     status: str = "success"  # success | partial | failed | skipped
     rows_read: int = 0
     rows_written_supabase: int = 0
@@ -30,7 +35,9 @@ class SyncReport:
     conflict_details: list[dict] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     attempts_read: int = 0
-    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    started_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 compatible
+    )
     finished_at: str | None = None
     # stok final hasil gabungan: {(product_id, branch_id): {"stock_qty", "updated_at", "source"}}
     merged: dict = field(default_factory=dict)
@@ -50,6 +57,9 @@ class SyncReport:
                 "rejected": self.rejected[:50],
                 "conflicts": self.conflict_details[:50],
                 "attempts_read": self.attempts_read,
+                "write_enabled": self.write_enabled,
+                "actor_id": self.actor_id,
+                "actor_role": self.actor_role,
             },
             "error_message": "; ".join(self.errors)[:1000] or None,
             "started_at": self.started_at,
@@ -61,10 +71,13 @@ def parse_ts(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        normalized = str(value).strip()
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        dt = datetime.fromisoformat(normalized)
     except ValueError:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)  # noqa: UP017 - Python 3.10 compatible
 
 
 def parse_stock(value: str) -> float | None:
@@ -72,14 +85,29 @@ def parse_stock(value: str) -> float | None:
         qty = float(str(value).replace(",", "").strip())
     except ValueError:
         return None
-    if qty < 0 or qty != qty:  # negatif atau NaN
+    if qty < 0 or math.isnan(qty):
         return None
     return qty
 
 
-def sync_inventory_two_way(repo, sheets, run_id: str, now: datetime | None = None, sleep=None) -> SyncReport:
-    now = now or datetime.now(timezone.utc)
-    report = SyncReport(run_id=run_id)
+def sync_inventory_two_way(
+    repo,
+    sheets,
+    run_id: str,
+    now: datetime | None = None,
+    sleep=None,
+    *,
+    write_enabled: bool = True,
+    actor_id: str | None = None,
+    actor_role: str | None = None,
+) -> SyncReport:
+    now = now or datetime.now(timezone.utc)  # noqa: UP017 - Python 3.10 compatible
+    report = SyncReport(
+        run_id=run_id,
+        write_enabled=write_enabled,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
 
     products = repo.fetch_products()
     branches = repo.fetch_branches()
@@ -109,10 +137,11 @@ def sync_inventory_two_way(repo, sheets, run_id: str, now: datetime | None = Non
     except Exception as exc:  # noqa: BLE001
         report.attempts_read = retry.attempts
         report.status = "failed"
-        report.errors.append(f"Baca Sheets gagal setelah {retry.attempts} percobaan: {exc}")
+        report.errors.append(f"Baca Sheets gagal setelah {retry.attempts} percobaan ({safe_error(exc)})")
         report.merged = merged
-        report.finished_at = datetime.now(timezone.utc).isoformat()
-        _safe_log(repo, report)
+        report.finished_at = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 compatible
+        if write_enabled:
+            _safe_log(repo, report)
         return report
     report.attempts_read = retry.attempts
     report.rows_read = len(sheet_rows)
@@ -170,13 +199,13 @@ def sync_inventory_two_way(repo, sheets, run_id: str, now: datetime | None = Non
     report.rows_rejected = len(report.rejected)
 
     # 3. Tulis ke Supabase (yang menang dari Sheets)
-    if to_supabase:
+    if write_enabled and to_supabase:
         try:
             report.rows_written_supabase = call_with_retry(
                 lambda: repo.upsert_inventory(to_supabase), **({"sleep": sleep} if sleep else {})
             )
         except Exception as exc:  # noqa: BLE001
-            report.errors.append(f"Tulis Supabase gagal: {exc}")
+            report.errors.append(f"Tulis Supabase gagal ({safe_error(exc)})")
 
     # 4. Tulis balik ke Sheets (state gabungan, urut cabang lalu SKU)
     out_rows = []
@@ -197,19 +226,19 @@ def sync_inventory_two_way(repo, sheets, run_id: str, now: datetime | None = Non
                 st["source"],
             ]
         )
-    try:
-        written = call_with_retry(lambda: sheets.write_stock_rows(out_rows), **({"sleep": sleep} if sleep else {}))
-        report.rows_written_sheets = max(0, written - 1)  # tanpa header
-    except Exception as exc:  # noqa: BLE001
-        report.errors.append(f"Tulis Sheets gagal: {exc}")
+    if write_enabled:
+        try:
+            written = call_with_retry(lambda: sheets.write_stock_rows(out_rows), **({"sleep": sleep} if sleep else {}))
+            report.rows_written_sheets = max(0, written - 1)  # tanpa header
+        except Exception as exc:  # noqa: BLE001
+            report.errors.append(f"Tulis Sheets gagal ({safe_error(exc)})")
 
-    if report.errors:
-        report.status = "partial"
-    elif report.rows_rejected:
+    if report.errors or report.rows_rejected:
         report.status = "partial"
     report.merged = merged
-    report.finished_at = datetime.now(timezone.utc).isoformat()
-    _safe_log(repo, report)
+    report.finished_at = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 compatible
+    if write_enabled:
+        _safe_log(repo, report)
     return report
 
 
@@ -217,4 +246,4 @@ def _safe_log(repo, report: SyncReport) -> None:
     try:
         repo.insert_sync_log(report.to_log_row())
     except Exception as exc:  # noqa: BLE001 - log gagal tidak boleh mematikan alur
-        report.errors.append(f"Tulis sync_logs gagal: {exc}")
+        report.errors.append(f"Tulis sync_logs gagal ({safe_error(exc)})")

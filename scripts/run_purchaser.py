@@ -11,6 +11,7 @@ import sys
 from datetime import datetime
 
 from src.agents.purchaser import run_purchaser
+from src.services.auth import system_actor
 from src.services.supabase_client import SupabaseNotConfigured, has_write_key
 
 
@@ -28,10 +29,15 @@ def main() -> int:
             print("ERROR: --period harus berformat YYYY-MM", file=sys.stderr)
             return 2
     persist = not args.dry_run
-    if persist and not has_write_key():
-        print("PERINGATAN: SUPABASE_SERVICE_ROLE_KEY kosong; hasil mungkin tidak tersimpan.", file=sys.stderr)
+    if not has_write_key():
+        print(
+            "ERROR: SUPABASE_SERVICE_ROLE_KEY wajib untuk read CLI/cron; gunakan UI untuk read via JWT user.",
+            file=sys.stderr,
+        )
+        return 2
     try:
         output = run_purchaser(
+            actor=system_actor("purchaser-cli"),
             persist=persist,
             period=args.period,
             analyst_run_id=args.analyst_run_id,

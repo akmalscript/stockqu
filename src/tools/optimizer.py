@@ -170,7 +170,7 @@ def optimize_budget_allocation(items: list[dict], available_budget: float, time_
         method = "milp_coin_cbc"
     except Exception as exc:  # noqa: BLE001 - kegagalan solver wajib fallback
         allocations = _solve_greedy(eligible, budget, enforce_urgent)
-        solver_status = f"fallback: {type(exc).__name__}: {exc}"
+        solver_status = f"fallback: {type(exc).__name__}"
         method = "greedy_fallback"
 
     for item in items:

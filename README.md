@@ -31,6 +31,8 @@ Rumus:
 
 ## Cara Install
 
+Gunakan Python 3.10 atau lebih baru.
+
 ```bash
 # 1. Clone dan masuk folder
 cd stockqu
@@ -68,11 +70,30 @@ Buka di browser yang muncul, biasanya `http://localhost:8501`.
 
 Jalankan di Supabase SQL Editor, berurutan:
 
-1. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
-2. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
+1. `supabase/migrations/001_init_stockqu.sql` - skema dasar P0 (jika belum diterapkan)
+2. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
+3. `supabase/migrations/20261107111649_p2_purchaser.sql` - skema dan RPC Purchaser
+4. `supabase/migrations/20261107190000_p1_p2_security_hardening.sql` - Auth/RLS, audit actor, dan reservasi budget atomik
+5. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
    Konsisten dengan seed P0: 5 item kritis (Item A-E di Branch 1).
 
 Isi `SUPABASE_SERVICE_ROLE_KEY` di `.env` supaya Agent bisa menyimpan hasil (`analyst_forecasts`, `agent_logs`, `sync_logs`).
+Key ini hanya untuk CLI/cron dan write backend; jangan pernah masukkan ke browser, UI, atau commit Git.
+
+### Supabase Auth dan role
+
+UI wajib login melalui Supabase Auth. Admin menetapkan role dan cabang di `app_metadata`, bukan `user_metadata`:
+
+```json
+{
+  "role": "warehouse_manager",
+  "branch_ids": ["<uuid-branch-yang-diizinkan>"]
+}
+```
+
+Role yang didukung: `super_admin`, `warehouse_manager`, `purchasing_staff`, dan
+`procurement_manager`. RLS memakai JWT user untuk read; write agent memakai
+service role setelah pemeriksaan role di backend. Akses anonymous dicabut.
 
 ### 2. Google Sheets (opsional, sinkron dua arah)
 
@@ -91,7 +112,13 @@ Jika Sheets belum dikonfigurasi atau gagal dibaca (retry 3x), Analyst otomatis f
 python -m scripts.run_analyst
 ```
 
-Atau dari halaman **Prediksi & Risiko** di Streamlit (tombol di sidebar). Tes:
+Gunakan `--dry-run` untuk membaca dan menghitung tanpa menulis inventory,
+Google Sheets, forecast, ataupun log. Atau jalankan dari halaman **Prediksi &
+Risiko** di Streamlit (tombol di sidebar). Tes:
+
+CLI/cron tetap memerlukan `SUPABASE_SERVICE_ROLE_KEY` untuk read server-side;
+`--dry-run` hanya menonaktifkan seluruh write. UI membaca memakai JWT user dan
+RLS, bukan service role.
 
 ```bash
 python -m pytest
@@ -113,8 +140,13 @@ Jalankan migration P2 setelah migration P0 dan P1:
 supabase/migrations/20261107111649_p2_purchaser.sql
 ```
 
-Migration menambah MOQ/pack pada kontrak, `procurement_plans`, `procurement_plan_items`, RLS read-only untuk UI,
-grant Data API eksplisit, dan RPC transaksional `persist_procurement_plan` yang hanya dapat dipanggil `service_role`.
+Migration P2 menambah MOQ/pack pada kontrak, `procurement_plans`, dan
+`procurement_plan_items`. Migration hardening mencabut akses anonymous,
+membatasi UI dengan Supabase Auth/RLS, menyimpan identitas requester, serta
+menambah `procurement_budget_reservations`. RPC transaksional
+`persist_procurement_plan` hanya dapat dipanggil `service_role`; RPC mengunci
+periode, menghitung ulang budget dari tabel tepercaya, memvalidasi MOQ/pack dan
+line total, lalu menyimpan plan dan reservasinya dalam satu transaksi.
 
 Jalankan Purchaser dari CLI atau halaman **Rencana Pembelian**:
 
@@ -123,10 +155,25 @@ python -m scripts.run_purchaser --period 2026-11
 ```
 
 Alur LangGraph: `load_inputs -> prioritize -> optimize -> explain -> validate -> persist`.
-Budget tersedia dihitung ulang dari `total - used - PO committed`, tetap dibatasi Rp 50.000.000. Optimizer MILP
+Budget tersedia dihitung ulang dari `total - used - PO committed - plan allocated`, tetap dibatasi Rp 50.000.000. Optimizer MILP
 mematuhi budget, MOQ, pack size, dan unit keputusan SKU-cabang. Jika solver gagal, fallback greedy dicatat di
 Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan menjadi `deferred` dengan label
 `DATA TIDAK DITEMUKAN`.
+
+## Quality gate lokal
+
+Test tidak memerlukan network atau kredensial live:
+
+```bash
+python -m pytest -q
+ruff check app.py pages scripts src tests
+git diff --check
+```
+
+Suite mencakup formula StockQu, graph Analyst/Purchaser, dry-run tanpa write,
+RBAC/admission control, reservasi budget, sinkronisasi Sheets atomik, dan
+invariant migration security P1/P2. Validasi integrasi Supabase/Sheets live tetap
+dijalankan terpisah pada project staging dengan kredensial yang sudah dirotasi.
 
 ## Git
 

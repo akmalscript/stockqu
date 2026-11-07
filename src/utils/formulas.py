@@ -64,7 +64,7 @@ def restock_qty(
     need = kebutuhan_restock(avg_daily, lead_time_days, stock, safety_days)
     if need <= 0:
         return 0
-    return int(math.ceil(need - 1e-9))
+    return math.ceil(need - 1e-9)
 
 
 def classify_risk(days: float | None, lead_time_days: int | None = None) -> str:

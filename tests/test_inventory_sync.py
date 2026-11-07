@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from src.services.inventory_sync import sync_inventory_two_way
 from tests.fakes import FakeRepo, FakeSheets
 
-NOW = datetime(2026, 11, 7, 7, 0, tzinfo=timezone.utc)
-no_sleep = lambda s: None  # noqa: E731
+NOW = datetime(2026, 11, 7, 7, 0, tzinfo=timezone.utc)  # noqa: UP017 - Python 3.10 compatible
+no_sleep = lambda s: None
 
 
 def test_empty_sheet_gets_initialized_from_supabase():

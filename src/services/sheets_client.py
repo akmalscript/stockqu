@@ -12,7 +12,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from src.config import sheets_settings
+from src.config import (
+    MAX_SHEET_STOCK_ROWS,
+    PROVIDER_REQUEST_TIMEOUT_SECONDS,
+    sheets_settings,
+)
 from src.utils.retry import NonRetryableError
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -85,22 +89,30 @@ class SheetsClient:
         self.service.spreadsheets().values().clear(spreadsheetId=self.spreadsheet_id, range=a1_range, body={}).execute()
 
     def get_metadata(self) -> dict:
-        return self.service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
+        return self.service.spreadsheets().get(
+            spreadsheetId=self.spreadsheet_id,
+            fields="sheets.properties",
+        ).execute()
 
-    def ensure_tab(self, title: str) -> None:
+    def ensure_tab(self, title: str) -> dict:
         meta = self.get_metadata()
-        if any(s["properties"]["title"] == title for s in meta.get("sheets", [])):
-            return
-        self.service.spreadsheets().batchUpdate(
+        for sheet in meta.get("sheets", []):
+            if sheet["properties"]["title"] == title:
+                return sheet["properties"]
+        response = self.service.spreadsheets().batchUpdate(
             spreadsheetId=self.spreadsheet_id,
             body={"requests": [{"addSheet": {"properties": {"title": title}}}]},
         ).execute()
+        return response["replies"][0]["addSheet"]["properties"]
 
     # ---------- stok ----------
     def read_stock_rows(self) -> list[SheetStockRow]:
-        values = self.get_range(f"{self.stock_tab}!A1:F")
+        # Ambil satu baris ekstra agar overflow terdeteksi tanpa membaca tab tanpa batas.
+        values = self.get_range(f"{self.stock_tab}!A1:F{MAX_SHEET_STOCK_ROWS + 2}")
         if not values:
             return []
+        if len(values) > MAX_SHEET_STOCK_ROWS + 1:
+            raise ValueError(f"Tab stok melewati batas aman {MAX_SHEET_STOCK_ROWS} baris")
         header = [h.strip().lower() for h in values[0]]
         idx = {name: header.index(name) if name in header else None for name in STOCK_HEADER}
         missing = [k for k in ("sku", "branch", "stock_qty") if idx[k] is None]
@@ -129,14 +141,71 @@ class SheetsClient:
         return rows
 
     def write_stock_rows(self, rows: list[list]) -> int:
-        """Tulis ulang seluruh tab stok (header + rows). Dipakai sinkron Supabase -> Sheets."""
-        self.ensure_tab(self.stock_tab)
-        self.clear_range(f"{self.stock_tab}!A:F")
-        return self.update_range(f"{self.stock_tab}!A1", [STOCK_HEADER, *rows], raw=True)
+        """Ganti snapshot A:F secara atomik lewat satu spreadsheets.batchUpdate.
+
+        ``updateCells`` menulis snapshot baru dan membersihkan trailing cells dalam
+        transaksi API yang sama. Jika satu request invalid, Google Sheets tidak
+        menerapkan request lain dalam batch sehingga tab tidak tertinggal kosong.
+        """
+        if len(rows) > MAX_SHEET_STOCK_ROWS:
+            raise ValueError(f"Snapshot stok melewati batas aman {MAX_SHEET_STOCK_ROWS} baris")
+        properties = self.ensure_tab(self.stock_tab)
+        sheet_id = int(properties["sheetId"])
+        row_count = int(properties.get("gridProperties", {}).get("rowCount") or 1000)
+        values = [STOCK_HEADER, *rows]
+        required_rows = len(values)
+        target_rows = max(row_count, required_rows)
+
+        def cell(value):
+            if value is None:
+                return {"userEnteredValue": {"stringValue": ""}}
+            if isinstance(value, bool):
+                return {"userEnteredValue": {"boolValue": value}}
+            if isinstance(value, (int, float)):
+                return {"userEnteredValue": {"numberValue": value}}
+            return {"userEnteredValue": {"stringValue": str(value)}}
+
+        row_data = [
+            {"values": [cell(value) for value in [*row, *([""] * (6 - len(row)))][:6]]}
+            for row in values
+        ]
+        requests = []
+        if required_rows > row_count:
+            requests.append(
+                {
+                    "appendDimension": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "length": required_rows - row_count,
+                    }
+                }
+            )
+        requests.append(
+            {
+                "updateCells": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": target_rows,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 6,
+                    },
+                    "rows": row_data,
+                    "fields": "userEnteredValue",
+                }
+            }
+        )
+        self.service.spreadsheets().batchUpdate(
+            spreadsheetId=self.spreadsheet_id,
+            body={"requests": requests},
+        ).execute()
+        return required_rows
 
 
 def _build_service():
+    import httplib2
     from google.oauth2 import service_account
+    from google_auth_httplib2 import AuthorizedHttp
     from googleapiclient.discovery import build
 
     cfg = sheets_settings()
@@ -147,7 +216,11 @@ def _build_service():
         creds = service_account.Credentials.from_service_account_file(cfg["service_account_file"], scopes=SCOPES)
     else:
         raise SheetsNotConfigured("GOOGLE_SERVICE_ACCOUNT_FILE / GOOGLE_SERVICE_ACCOUNT_JSON belum diisi")
-    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+    http = AuthorizedHttp(
+        creds,
+        http=httplib2.Http(timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS),
+    )
+    return build("sheets", "v4", http=http, cache_discovery=False)
 
 
 def sheets_configured() -> bool:
