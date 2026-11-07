@@ -1,0 +1,36 @@
+# StockQu - Dependencies
+# Install: pip install -r requirements.txt
+# Jalankan: streamlit run app.py
+
+# Frontend - Streamlit saja, bukan fullstack React
+streamlit>=1.42.0
+
+# Backend - Supabase
+supabase>=2.0.0
+
+# Orkestrasi Agent - LangGraph
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# Data dan Perhitungan
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Google Sheets - Sumber stok real-time
+google-api-python-client>=2.150.0
+google-auth>=2.35.0
+google-auth-oauthlib>=1.2.0
+
+# Export PDF dan Excel - F-35
+openpyxl>=3.1.0
+fpdf2>=2.8.0
+xlsxwriter>=3.2.0
+
+# Visualisasi Dashboard
+plotly>=5.24.0
+
+# Config dan Env
+python-dotenv>=1.0.0
+
+# HTTP untuk n8n Webhook
+requests>=2.32.0

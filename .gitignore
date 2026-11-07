@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.Python
+
+# Environment dan Secrets - JANGAN PERNAH DI-COMMIT
+.env
+.env.local
+.streamlit/secrets.toml
+*.pem
+*.key
+
+# Supabase
+.supabase/
+supabase/.branches/
+supabase/.temp/
+
+# n8n
+n8n/credentials/
+
+# Data lokal dan hasil export
+data/*.xlsx
+data/*.pdf
+exports/
+*.log
+
+# IDE dan OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Tetap di-commit - JANGAN di-ignore
+# .env.example
+# AGENTS.md
+# requirements.txt
+# README.md
