@@ -6,9 +6,11 @@
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from collections.abc import Iterable
+from datetime import date, datetime, timedelta
 from functools import lru_cache
-from typing import Any, Iterable
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.config import get_setting
 from src.utils.retry import NonRetryableError
@@ -87,6 +89,32 @@ class SupabaseRepository:
             lambda: self.read.table("inventory").select("id, product_id, branch_id, stock_qty, updated_at").order("id")
         )
 
+    # ---------- purchaser inputs ----------
+    def fetch_budget(self, period: str) -> dict | None:
+        res = self.read.table("budgets").select("*").eq("month", period).limit(1).execute()
+        return res.data[0] if res.data else None
+
+    def fetch_purchase_orders_for_period(self, period: str) -> list[dict]:
+        """PO bulan berjalan dalam batas waktu WIB; dipakai menghitung committed budget."""
+        year, month = (int(part) for part in period.split("-", 1))
+        start = datetime(year, month, 1, tzinfo=ZoneInfo("Asia/Jakarta"))
+        end = datetime(year + (month == 12), 1 if month == 12 else month + 1, 1, tzinfo=start.tzinfo)
+        return self._fetch_all(
+            lambda: self.read.table("purchase_orders")
+            .select("id, total_amount, status, created_at")
+            .gte("created_at", start.isoformat())
+            .lt("created_at", end.isoformat())
+            .order("created_at")
+        )
+
+    def fetch_reference_contracts(self) -> list[dict]:
+        """Harga referensi P2; pemilihan supplier/kuotasi aktual baru dilakukan P3."""
+        return self._fetch_all(
+            lambda: self.read.table("contracts")
+            .select("id, supplier_id, product_id, price, discount, valid_until, moq, pack_size, created_at")
+            .order("created_at", desc=True)
+        )
+
     # ---------- sales history ----------
     def latest_sales_date(self) -> date | None:
         res = self.read.table("sales_history").select("sale_date").order("sale_date", desc=True).limit(1).execute()
@@ -139,6 +167,16 @@ class SupabaseRepository:
     def insert_sync_log(self, row: dict) -> None:
         self.write.table("sync_logs").insert(row).execute()
 
+    def persist_procurement_plan(self, plan: dict, items: list[dict]) -> str:
+        """Simpan header + detail dalam satu transaksi RPC (P2)."""
+        res = self.write.rpc(
+            "persist_procurement_plan",
+            {"p_plan": to_jsonable(plan), "p_items": to_jsonable(items)},
+        ).execute()
+        if not res.data:
+            raise RuntimeError("RPC persist_procurement_plan tidak mengembalikan plan_id")
+        return str(res.data)
+
     # ---------- reads untuk UI ----------
     def latest_analyst_run_id(self) -> str | None:
         res = (
@@ -163,6 +201,28 @@ class SupabaseRepository:
     def fetch_sync_logs(self, limit: int = 10) -> list[dict]:
         return (
             self.read.table("sync_logs").select("*").order("started_at", desc=True).limit(limit).execute().data or []
+        )
+
+    def latest_purchaser_run_id(self) -> str | None:
+        res = (
+            self.read.table("procurement_plans")
+            .select("run_id, created_at")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0]["run_id"] if res.data else None
+
+    def fetch_procurement_plan(self, run_id: str) -> dict | None:
+        res = self.read.table("procurement_plans").select("*").eq("run_id", run_id).limit(1).execute()
+        return res.data[0] if res.data else None
+
+    def fetch_procurement_plan_items(self, plan_id: str) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("procurement_plan_items")
+            .select("*")
+            .eq("plan_id", plan_id)
+            .order("rank")
         )
 
     def has_dummy_sales(self) -> bool:
