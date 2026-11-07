@@ -41,3 +41,5 @@ Thumbs.db
 # AGENTS.md
 # requirements.txt
 # README.md
+# File env tanpa titik (berisi kredensial) - JANGAN di-commit
+env
