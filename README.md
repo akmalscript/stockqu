@@ -31,6 +31,8 @@ Rumus:
 
 ## Cara Install
 
+Gunakan Python 3.10 atau lebih baru.
+
 ```bash
 # 1. Clone dan masuk folder
 cd stockqu
@@ -62,6 +64,117 @@ streamlit run app.py
 
 Buka di browser yang muncul, biasanya `http://localhost:8501`.
 
+## P1 - Data & Analyst
+
+### 1. Database
+
+Jalankan di Supabase SQL Editor, berurutan:
+
+1. `supabase/migrations/001_init_stockqu.sql` - skema dasar P0 (jika belum diterapkan)
+2. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
+3. `supabase/migrations/20261107111649_p2_purchaser.sql` - skema dan RPC Purchaser
+4. `supabase/migrations/20261107190000_p1_p2_security_hardening.sql` - Auth/RLS, audit actor, dan reservasi budget atomik
+5. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
+   Konsisten dengan seed P0: 5 item kritis (Item A-E di Branch 1).
+
+Isi `SUPABASE_SERVICE_ROLE_KEY` di `.env` supaya Agent bisa menyimpan hasil (`analyst_forecasts`, `agent_logs`, `sync_logs`).
+Key ini hanya untuk CLI/cron dan write backend; jangan pernah masukkan ke browser, UI, atau commit Git.
+
+### Supabase Auth dan role
+
+UI wajib login melalui Supabase Auth. Admin menetapkan role dan cabang di `app_metadata`, bukan `user_metadata`:
+
+```json
+{
+  "role": "warehouse_manager",
+  "branch_ids": ["<uuid-branch-yang-diizinkan>"]
+}
+```
+
+Role yang didukung: `super_admin`, `warehouse_manager`, `purchasing_staff`, dan
+`procurement_manager`. RLS memakai JWT user untuk read; write agent memakai
+service role setelah pemeriksaan role di backend. Akses anonymous dicabut.
+
+### 2. Google Sheets (opsional, sinkron dua arah)
+
+1. Buat Service Account di Google Cloud, aktifkan Google Sheets API, download JSON key (simpan di luar repo).
+2. Buat spreadsheet, share ke email service account sebagai **Editor**.
+3. Isi `GOOGLE_SHEETS_SPREADSHEET_ID` dan `GOOGLE_SERVICE_ACCOUNT_FILE` (atau `GOOGLE_SERVICE_ACCOUNT_JSON` untuk Streamlit Cloud).
+4. Tab `Stok` dibuat otomatis saat run pertama, kolom: `sku | product_name | branch | stock_qty | updated_at | source`.
+   Edit stok langsung di Sheets; run berikutnya menyinkronkan ke Supabase (yang `updated_at`-nya lebih baru menang,
+   baris tanpa `updated_at` dianggap edit manual terbaru). Baris invalid ditolak dan dicatat di `sync_logs`.
+
+Jika Sheets belum dikonfigurasi atau gagal dibaca (retry 3x), Analyst otomatis fallback ke stok Supabase dan mencatatnya di Execution Trace.
+
+### 3. Jalankan Analyst
+
+```bash
+python -m scripts.run_analyst
+```
+
+Gunakan `--dry-run` untuk membaca dan menghitung tanpa menulis inventory,
+Google Sheets, forecast, ataupun log. Atau jalankan dari halaman **Prediksi &
+Risiko** di Streamlit (tombol di sidebar). Tes:
+
+CLI/cron tetap memerlukan `SUPABASE_SERVICE_ROLE_KEY` untuk read server-side;
+`--dry-run` hanya menonaktifkan seluruh write. UI membaca memakai JWT user dan
+RLS, bukan service role.
+
+```bash
+python -m pytest
+```
+
+### Arsitektur Analyst (LangGraph)
+
+`sync_stock -> load_history -> forecast -> detect_risk -> explain -> persist`
+
+- Rumus resmi ada di satu tempat: `src/utils/formulas.py`.
+- Forecast (`src/tools/forecasting.py`): tren linear 8 minggu x musiman mingguan, dibandingkan dengan baseline rata-rata 180 hari lewat backtest 14 hari. Status risiko tetap memakai rumus resmi; forecast jadi evidence + peringatan dini + rentang ketidakpastian.
+- Setiap angka di Reason Trace menyebut sumbernya (Sheets / Supabase / Analyst).
+
+## P2 - Purchaser
+
+Jalankan migration P2 setelah migration P0 dan P1:
+
+```text
+supabase/migrations/20261107111649_p2_purchaser.sql
+```
+
+Migration P2 menambah MOQ/pack pada kontrak, `procurement_plans`, dan
+`procurement_plan_items`. Migration hardening mencabut akses anonymous,
+membatasi UI dengan Supabase Auth/RLS, menyimpan identitas requester, serta
+menambah `procurement_budget_reservations`. RPC transaksional
+`persist_procurement_plan` hanya dapat dipanggil `service_role`; RPC mengunci
+periode, menghitung ulang budget dari tabel tepercaya, memvalidasi MOQ/pack dan
+line total, lalu menyimpan plan dan reservasinya dalam satu transaksi.
+
+Jalankan Purchaser dari CLI atau halaman **Rencana Pembelian**:
+
+```bash
+python -m scripts.run_purchaser --period 2026-11
+```
+
+Alur LangGraph: `load_inputs -> prioritize -> optimize -> explain -> validate -> persist`.
+Budget tersedia dihitung ulang dari `total - used - PO committed - plan allocated`, tetap dibatasi Rp 50.000.000. Optimizer MILP
+mematuhi budget, MOQ, pack size, dan unit keputusan SKU-cabang. Jika solver gagal, fallback greedy dicatat di
+Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan menjadi `deferred` dengan label
+`DATA TIDAK DITEMUKAN`.
+
+## Quality gate lokal
+
+Test tidak memerlukan network atau kredensial live:
+
+```bash
+python -m pytest -q
+ruff check app.py pages scripts src tests
+git diff --check
+```
+
+Suite mencakup formula StockQu, graph Analyst/Purchaser, dry-run tanpa write,
+RBAC/admission control, reservasi budget, sinkronisasi Sheets atomik, dan
+invariant migration security P1/P2. Validasi integrasi Supabase/Sheets live tetap
+dijalankan terpisah pada project staging dengan kredensial yang sudah dirotasi.
+
 ## Git
 
 Ikuti `Git Commit Message Conventions` & `Git Branching Workflow` di `AGENTS.md`. Jangan commit langsung ke `main` kecuali initial commit.
@@ -77,6 +190,9 @@ Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 stockqu/
   AGENTS.md
   app.py
+  pages/         # Halaman Streamlit Analyst + Purchaser
+  scripts/       # CLI: run_analyst.py + run_purchaser.py
+  tests/         # pytest (tanpa jaringan)
   requirements.txt
   .env.example
   .gitignore

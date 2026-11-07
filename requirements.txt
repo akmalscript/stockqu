@@ -15,10 +15,13 @@ langchain-core>=0.3.0
 # Data dan Perhitungan
 pandas>=2.2.0
 numpy>=1.26.0
+# Optimasi constrained budget Purchaser (MILP + CBC bundled)
+pulp==3.3.0
 
 # Google Sheets - Sumber stok real-time
 google-api-python-client>=2.150.0
 google-auth>=2.35.0
+google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 
 # Export PDF dan Excel - F-35
