@@ -24,6 +24,7 @@ Demo: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari).
 - Human-in-the-loop: Tanpa balas **OK** di WhatsApp, PO tidak dikirim dan stok tidak diubah
 
 Rumus:
+
 - `days-to-stockout = stok_saat_ini / rata_rata_penjualan_harian`
 - `rata_rata_penjualan_harian = total_penjualan_6_bulan / 180`
 - `kebutuhan_restock = (rata_rata_penjualan_harian x (lead_time_hari + safety_hari)) - stok_saat_ini`
@@ -60,6 +61,15 @@ streamlit run app.py
 ```
 
 Buka di browser yang muncul, biasanya `http://localhost:8501`.
+
+## Git
+
+Ikuti `Git Commit Message Conventions` & `Git Branching Workflow` di `AGENTS.md`. Jangan commit langsung ke `main` kecuali initial commit.
+
+Format: `<type>: <deskripsi imperative lowercase>` tanpa scope.
+Contoh: `feat: add analyst forecast for days-to-stockout`
+
+Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 
 ## Struktur Folder
 
