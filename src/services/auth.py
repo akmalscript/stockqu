@@ -37,6 +37,11 @@ PURCHASER_VIEW_ROLES = frozenset(
     {ROLE_SUPER_ADMIN, ROLE_PURCHASING_STAFF, ROLE_PROCUREMENT_MANAGER}
 )
 PURCHASER_RUN_ROLES = PURCHASER_VIEW_ROLES
+# P3: Negotiator membaca plan + kontrak dan membuat draft PO (belum dikirim).
+NEGOTIATOR_VIEW_ROLES = PURCHASER_VIEW_ROLES
+NEGOTIATOR_RUN_ROLES = PURCHASER_VIEW_ROLES
+# F-04: hanya admin yang mengelola dokumen kontrak supplier.
+SUPPLIER_DOCUMENT_ADMIN_ROLES = frozenset({ROLE_SUPER_ADMIN})
 
 
 class AuthenticationRequired(PermissionError):

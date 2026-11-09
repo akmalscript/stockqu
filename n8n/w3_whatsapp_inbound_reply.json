@@ -1,0 +1,145 @@
+{
+  "name": "StockQu W3 - Terima balasan WA",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stockqu-wa-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "891e701d-4bca-5764-b9eb-fd53c490cc33",
+      "name": "Twilio inbound",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "stockqu-wa-inbound"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<Response></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
+        }
+      },
+      "id": "c7121e8a-5f1d-5b23-a7df-f1da6283b7dd",
+      "name": "Ack Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STOCKQU_AGENT_SERVICE_URL }}/webhooks/whatsapp-reply",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ webhook_url: $env.STOCKQU_WA_INBOUND_URL, twilio_signature: $('Twilio inbound').item.json.headers['x-twilio-signature'] || '', params: $('Twilio inbound').item.json.body }) }}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "maxTries": 3,
+            "waitBetweenTries": 2000
+          }
+        }
+      },
+      "id": "9770807c-67a0-596a-ba4b-ba9f8e330119",
+      "name": "Validasi & putuskan (Agent Service)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "StockQu Agent Service (Bearer N8N_TO_SERVICE_TOKEN)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.TWILIO_WHATSAPP_FROM }}",
+        "to": "={{ $('Twilio inbound').item.json.body.From.replace('whatsapp:', '') }}",
+        "toWhatsapp": true,
+        "message": "={{ $json.reply_text }}"
+      },
+      "id": "09d799b9-4783-5f3e-8d49-498470ba479d",
+      "name": "Balas konfirmasi WA",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        720,
+        0
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "REPLACE_ME",
+          "name": "Twilio WhatsApp Sandbox"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Twilio inbound": {
+      "main": [
+        [
+          {
+            "node": "Ack Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ack Twilio": {
+      "main": [
+        [
+          {
+            "node": "Validasi & putuskan (Agent Service)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validasi & putuskan (Agent Service)": {
+      "main": [
+        [
+          {
+            "node": "Balas konfirmasi WA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Jakarta",
+    "saveDataErrorExecution": "all"
+  },
+  "meta": {
+    "stockqu": "Signature Twilio + whitelist nomor + kode APR divalidasi di Agent Service, bukan di n8n."
+  },
+  "pinData": {}
+}

@@ -160,6 +160,96 @@ mematuhi budget, MOQ, pack size, dan unit keputusan SKU-cabang. Jika solver gaga
 Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan menjadi `deferred` dengan label
 `DATA TIDAK DITEMUKAN`.
 
+## P3 - Negotiator
+
+1. Jalankan migration `supabase/migrations/20261109100000_p3_negotiator.sql` (setelah hardening P1/P2).
+   Isinya: `supplier_documents` + `supplier_document_chunks` (RAG kontrak), `negotiation_runs`,
+   `supplier_comparisons`, kolom draft PO di `purchase_orders`/`po_items`, bucket Storage privat
+   `supplier-documents`, dan RPC `persist_negotiation` (khusus `service_role`).
+2. Buat dan indeks kontrak DUMMY per supplier. Isi PDF hanya dari tabel `contracts`, `suppliers`,
+   `products` dan berlabel `CONTOH SIMULASI - BUKAN DATA REAL`:
+
+   ```bash
+   python -m scripts.seed_supplier_documents
+   ```
+
+   Super Admin juga bisa upload PDF kontrak lain dari halaman **Perbandingan Supplier**.
+3. Jalankan Negotiator (setelah Purchaser punya plan tersimpan):
+
+   ```bash
+   python -m scripts.run_negotiator
+   ```
+
+Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_select -> budget_recheck
+-> (replan_cheapest -> compare_select) -> draft_documents -> validate -> persist`.
+
+- Penawaran: minimal 3 supplier per SKU dari kontrak tersimpan; kurang dari 3, kontrak kedaluwarsa, atau
+  data tidak lengkap ditandai `needs_review` dan tidak dikarang.
+- Pemilihan: supplier yang tiba sebelum stok habis didahulukan, lalu skor 40% biaya + 25% performa +
+  25% lead time + 10% verifikasi dokumen. Alasan dan evidence tersimpan di `supplier_comparisons.reason_trace`.
+- RAG: chunk per Pasal + metadata filter + BM25, kutipan menyebut dokumen, pasal, halaman, dan masa berlaku.
+  Angka harga/diskon/MOQ/pack di klausul dicocokkan dengan tabel `contracts` (`verified`/`mismatch`).
+  Semantic vector search (pgvector) belum dipakai karena provider embedding belum dipilih.
+- Budget recheck: total draft PO dibandingkan dengan budget tersedia + reservasi plan. Jika lewat, satu kali
+  replanning ke supplier termurah; jika tetap lewat, run `failed` dan Purchaser harus dijalankan ulang.
+  RPC memvalidasi ulang semuanya di database dengan advisory lock periode.
+- Output: draft PO per supplier x gudang tujuan, draft email PO dan draft email negosiasi, ekspor PDF/Excel.
+  **Tidak ada yang dikirim**; status PO tetap `draft` sampai approval manager (P4).
+
+## P4 - Orkestrasi & Aksi Nyata
+
+1. Jalankan migration `supabase/migrations/20261109200000_p4_orchestration_approval.sql` (setelah P3).
+   Isinya: `workflow_jobs` (anti duplikat job harian), `approval_requests` (kode `APR-YYYYMMDD-NN`),
+   `po_status_history`, `inventory.incoming_qty` + `inventory_transactions`, kolom `suppliers.email`,
+   schema `langgraph` untuk checkpoint, dan RPC state machine `request_po_approval`, `decide_approval`,
+   `mark_po_sent` (khusus `service_role`).
+2. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
+   Isi `suppliers.email` (atau `PO_EMAIL_TEST_RECIPIENT` untuk demo) supaya PO bisa dikirim.
+3. Jalankan Agent Service di belakang HTTPS:
+
+   ```bash
+   python -m scripts.run_agent_service
+   ```
+
+4. Import dan konfigurasi workflow n8n W1-W5: lihat [n8n/README.md](n8n/README.md).
+
+Graph penuh (`src/orchestration/procurement_graph.py`):
+`analyst -> purchaser -> negotiator -> budget_recheck -> request_approval -> wait_approval (interrupt)
+-> apply_decision -> dispatch_po_emails`. Checkpoint PostgresSaver menyimpan posisi graph, sehingga
+balasan WhatsApp berjam-jam kemudian melanjutkan thread yang sama.
+
+State machine PO dijaga di database:
+`draft -> waiting_approval -> approved -> sent` (atau `rejected`, atau kembali `draft` saat revisi/kedaluwarsa).
+`mark_po_sent` menolak PO yang belum `approved`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
+Barang terkirim dicatat sebagai `incoming_qty` (Supabase) dan tab `Incoming` (Google Sheets), bukan stok fisik.
+Idempotensi: satu job cron per hari, satu approval per negotiation run, `decision_ref` unik per balasan
+Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
+
+Approval: balas `OK APR-...`, `TOLAK APR-...`, atau `REVISI APR-...` dari nomor di `APPROVER_WHATSAPP_NUMBERS`.
+Signature Twilio diverifikasi. Jika WhatsApp gagal, manager bisa memutuskan di halaman **PO & Approval**.
+
+## P5 - Dashboard & Laporan
+
+Jalankan migration `supabase/migrations/20261110100000_p5_admin_audit.sql` (setelah P4): RLS tulis
+Super Admin untuk produk/supplier/kontrak/budget, plafon budget Rp 50 jt di database, dan `audit_log`
+append-only yang diisi trigger.
+
+`app.py` adalah router `st.navigation`: login Supabase Auth sekali, lalu 11 halaman di `app_pages/`.
+Menu mengikuti role (hanya UX), sedangkan data tetap disaring RLS dengan JWT user.
+
+| Seksi | Halaman | Role |
+|---|---|---|
+| Operasional | Command center (status agent per tahap, jalankan sekarang), Inventori (stok fisik + in-transit per cabang) | semua |
+| Agent | Prediksi & risiko, PO & approval | semua |
+| Agent | Rencana pembelian, Perbandingan supplier | Super Admin, Purchasing Staff, Procurement Manager |
+| Jejak & laporan | Reason trace (faktor + sumber, tautan ke log run), Execution log, Analitik (KPI berlabel aktual/backtest/target), Ekspor (PDF/Excel) | semua |
+| Pengaturan | Admin (CRUD master data, upload kontrak, audit log, panduan user/role) | Super Admin |
+
+Role user diatur di Supabase Dashboard -> Authentication -> Users -> `app_metadata`,
+misalnya `{"role": "warehouse_manager", "branch_ids": ["<uuid Branch 1>"]}`.
+Untuk tombol **Jalankan** dan approval dashboard, isi `STOCKQU_AGENT_SERVICE_URL` dan `N8N_TO_SERVICE_TOKEN`
+di Streamlit secrets.
+
 ## Quality gate lokal
 
 Test tidak memerlukan network atau kredensial live:
@@ -190,7 +280,7 @@ Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 stockqu/
   AGENTS.md
   app.py
-  pages/         # Halaman Streamlit Analyst + Purchaser
+  app_pages/     # 11 halaman Streamlit (router st.navigation di app.py)
   scripts/       # CLI: run_analyst.py + run_purchaser.py
   tests/         # pytest (tanpa jaringan)
   requirements.txt

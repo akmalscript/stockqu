@@ -16,21 +16,19 @@ from src.config import LABEL_NOT_FOUND, LABEL_SIMULASI, RISK_MAX_DAYS, URGENT_MA
 from src.services.auth import (
     ANALYST_RUN_ROLES,
     ANALYST_VIEW_ROLES,
-    require_streamlit_access,
 )
-from src.services.supabase_client import SupabaseRepository, has_write_key
+from src.services.supabase_client import has_write_key
 from src.services.work_admission import (
     WorkflowDeadlineExceeded,
     WorkRejected,
     work_admission,
 )
+from src.ui.session import page_context
 from src.utils import formulas as F
 
 TEAL, NAVY, MINT = "#0E7C61", "#1E2A44", "#EFF4F1"
 
-st.set_page_config(page_title="StockQu - Prediksi & Risiko", page_icon="📦", layout="wide")
-actor, user_client = require_streamlit_access(ANALYST_VIEW_ROLES, "melihat prediksi dan risiko")
-repository = SupabaseRepository(read_client=user_client)
+actor, user_client, repository = page_context(ANALYST_VIEW_ROLES, "melihat prediksi dan risiko")
 st.title("Prediksi & Risiko Stockout")
 st.caption("Agent 1 - The Analyst | histori 6 bulan | deteksi risiko habis 4-7 hari | stok per cabang, tidak dijumlahkan")
 

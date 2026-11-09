@@ -12,20 +12,18 @@ from src.config import BUDGET_MONTHLY, LABEL_NOT_FOUND, LABEL_SIMULASI
 from src.services.auth import (
     PURCHASER_RUN_ROLES,
     PURCHASER_VIEW_ROLES,
-    require_streamlit_access,
 )
-from src.services.supabase_client import SupabaseRepository, has_write_key
+from src.services.supabase_client import has_write_key
 from src.services.work_admission import (
     WorkflowDeadlineExceeded,
     WorkRejected,
     work_admission,
 )
+from src.ui.session import page_context
 
 TEAL, NAVY, MINT, WHITE = "#0E7C61", "#1E2A44", "#EFF4F1", "#FFFFFF"
 
-st.set_page_config(page_title="StockQu - Rencana Pembelian", page_icon="📦", layout="wide")
-actor, user_client = require_streamlit_access(PURCHASER_VIEW_ROLES, "melihat rencana pembelian")
-repository = SupabaseRepository(read_client=user_client)
+actor, user_client, repository = page_context(PURCHASER_VIEW_ROLES, "melihat rencana pembelian")
 st.title("Rencana Pembelian")
 st.caption(
     "Agent 2 - The Purchaser | budget bulanan Rp 50.000.000 | "
