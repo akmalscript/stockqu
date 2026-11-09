@@ -196,6 +196,38 @@ Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_
 - Output: draft PO per supplier x gudang tujuan, draft email PO dan draft email negosiasi, ekspor PDF/Excel.
   **Tidak ada yang dikirim**; status PO tetap `draft` sampai approval manager (P4).
 
+## P4 - Orkestrasi & Aksi Nyata
+
+1. Jalankan migration `supabase/migrations/20261109200000_p4_orchestration_approval.sql` (setelah P3).
+   Isinya: `workflow_jobs` (anti duplikat job harian), `approval_requests` (kode `APR-YYYYMMDD-NN`),
+   `po_status_history`, `inventory.incoming_qty` + `inventory_transactions`, kolom `suppliers.email`,
+   schema `langgraph` untuk checkpoint, dan RPC state machine `request_po_approval`, `decide_approval`,
+   `mark_po_sent` (khusus `service_role`).
+2. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
+   Isi `suppliers.email` (atau `PO_EMAIL_TEST_RECIPIENT` untuk demo) supaya PO bisa dikirim.
+3. Jalankan Agent Service di belakang HTTPS:
+
+   ```bash
+   python -m scripts.run_agent_service
+   ```
+
+4. Import dan konfigurasi workflow n8n W1-W5: lihat [n8n/README.md](n8n/README.md).
+
+Graph penuh (`src/orchestration/procurement_graph.py`):
+`analyst -> purchaser -> negotiator -> budget_recheck -> request_approval -> wait_approval (interrupt)
+-> apply_decision -> dispatch_po_emails`. Checkpoint PostgresSaver menyimpan posisi graph, sehingga
+balasan WhatsApp berjam-jam kemudian melanjutkan thread yang sama.
+
+State machine PO dijaga di database:
+`draft -> waiting_approval -> approved -> sent` (atau `rejected`, atau kembali `draft` saat revisi/kedaluwarsa).
+`mark_po_sent` menolak PO yang belum `approved`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
+Barang terkirim dicatat sebagai `incoming_qty` (Supabase) dan tab `Incoming` (Google Sheets), bukan stok fisik.
+Idempotensi: satu job cron per hari, satu approval per negotiation run, `decision_ref` unik per balasan
+Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
+
+Approval: balas `OK APR-...`, `TOLAK APR-...`, atau `REVISI APR-...` dari nomor di `APPROVER_WHATSAPP_NUMBERS`.
+Signature Twilio diverifikasi. Jika WhatsApp gagal, manager bisa memutuskan di halaman **PO & Approval**.
+
 ## Quality gate lokal
 
 Test tidak memerlukan network atau kredensial live:

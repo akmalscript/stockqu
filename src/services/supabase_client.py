@@ -378,6 +378,98 @@ class SupabaseRepository:
             .order("po_number")
         )
 
+    # ---------- P4 orkestrasi & approval (service role) ----------
+    def create_workflow_job(self, row: dict) -> tuple[dict, bool]:
+        """Insert job; jika job_key sudah ada / ada job running, kembalikan job lama (created=False)."""
+        try:
+            res = self.write.table("workflow_jobs").insert(row).execute()
+            return res.data[0], True
+        except Exception as exc:
+            if "23505" not in str(exc) and "duplicate" not in str(exc).lower():
+                raise
+            existing = (
+                self.write.table("workflow_jobs").select("*").eq("job_key", row["job_key"]).limit(1).execute().data
+                or self.write.table("workflow_jobs").select("*").eq("status", "running").limit(1).execute().data
+            )
+            if not existing:
+                raise
+            return existing[0], False
+
+    def update_workflow_job(self, run_id: str, fields: dict) -> None:
+        self.write.table("workflow_jobs").update(
+            {**to_jsonable(fields), "updated_at": datetime.now(ZoneInfo("UTC")).isoformat()}
+        ).eq("run_id", run_id).execute()
+
+    def fetch_workflow_jobs(self, limit: int = 10) -> list[dict]:
+        return self.read.table("workflow_jobs").select("*").order("started_at", desc=True).limit(limit).execute().data or []
+
+    def request_po_approval(self, payload: dict) -> dict:
+        return self.write.rpc("request_po_approval", {"p_request": to_jsonable(payload)}).execute().data
+
+    def decide_approval(self, payload: dict) -> dict:
+        return self.write.rpc("decide_approval", {"p_decision": to_jsonable(payload)}).execute().data
+
+    def mark_po_sent(self, po_id: str, email_ref: str, actor: str) -> dict:
+        return self.write.rpc(
+            "mark_po_sent", {"p_po_id": po_id, "p_email_ref": email_ref, "p_actor": actor}
+        ).execute().data
+
+    def set_approval_notification(self, approval_code: str, status: str) -> None:
+        self.write.table("approval_requests").update({"notification_status": status}).eq(
+            "approval_code", approval_code
+        ).execute()
+
+    def fetch_approval_request(self, approval_code: str) -> dict | None:
+        res = self.read.table("approval_requests").select("*").eq("approval_code", approval_code).limit(1).execute()
+        return res.data[0] if res.data else None
+
+    def fetch_approval_requests(self, limit: int = 20) -> list[dict]:
+        return (
+            self.read.table("approval_requests").select("*").order("created_at", desc=True).limit(limit).execute().data
+            or []
+        )
+
+    def fetch_purchase_orders_by_ids(self, po_ids: list[str]) -> list[dict]:
+        if not po_ids:
+            return []
+        return (
+            self.read.table("purchase_orders")
+            .select("id, po_number, supplier_id, branch_id, total_amount, status, expected_arrival, draft, "
+                    "approval_code, approved_at, sent_at")
+            .in_("id", po_ids)
+            .order("po_number")
+            .execute()
+            .data
+            or []
+        )
+
+    def fetch_purchase_order_by_number(self, po_number: str) -> dict | None:
+        res = (
+            self.read.table("purchase_orders")
+            .select("id, po_number, supplier_id, branch_id, total_amount, status, expected_arrival, draft")
+            .eq("po_number", po_number)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def fetch_recent_purchase_orders(self, limit: int = 30) -> list[dict]:
+        return (
+            self.read.table("purchase_orders")
+            .select("id, po_number, supplier_id, branch_id, total_amount, status, expected_arrival, approval_code, "
+                    "approved_at, sent_at, created_at")
+            .not_.is_("po_number", "null")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+
+    def fetch_supplier_emails(self) -> dict[str, str | None]:
+        rows = self.read.table("suppliers").select("id, email").execute().data or []
+        return {str(r["id"]): r.get("email") for r in rows}
+
 
 def to_jsonable(value: Any) -> Any:
     """Ubah inf/NaN jadi None supaya aman disimpan ke JSON/Postgres."""
