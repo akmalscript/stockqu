@@ -64,6 +64,21 @@ streamlit run app.py
 
 Buka di browser yang muncul, biasanya `http://localhost:8501`.
 
+### n8n + Gmail lokal
+
+Jalankan instance n8n yang sudah dipin ke versi stabil dan memakai timezone
+Asia/Jakarta:
+
+```bash
+cp n8n/.env.example n8n/.env
+docker compose --env-file n8n/.env -f n8n/docker-compose.yml up -d
+```
+
+Buka `http://localhost:5678`. Panduan lengkap pembuatan Gmail OAuth2,
+credential Supabase, migration outbox, import workflow, dan pengujian approval
+ada di [`n8n/README.md`](n8n/README.md). Workflow Gmail tidak mengirim PO tanpa
+status `approved` dan approval WhatsApp terbaru `OK`.
+
 ## P1 - Data & Analyst
 
 ### 1. Database
@@ -203,15 +218,18 @@ Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_
    `po_status_history`, `inventory.incoming_qty` + `inventory_transactions`, kolom `suppliers.email`,
    schema `langgraph` untuk checkpoint, dan RPC state machine `request_po_approval`, `decide_approval`,
    `mark_po_sent` (khusus `service_role`).
-2. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
+2. Jalankan migration
+   `supabase/migrations/20261110110000_add_po_email_delivery_outbox.sql` untuk claim Gmail idempoten,
+   audit provider message ID, dan pencegahan email ganda.
+3. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
    Isi `suppliers.email` (atau `PO_EMAIL_TEST_RECIPIENT` untuk demo) supaya PO bisa dikirim.
-3. Jalankan Agent Service di belakang HTTPS:
+4. Jalankan Agent Service di belakang HTTPS:
 
    ```bash
    python -m scripts.run_agent_service
    ```
 
-4. Import dan konfigurasi workflow n8n W1-W5: lihat [n8n/README.md](n8n/README.md).
+5. Import dan konfigurasi workflow n8n W1-W5: lihat [n8n/README.md](n8n/README.md).
 
 Graph penuh (`src/orchestration/procurement_graph.py`):
 `analyst -> purchaser -> negotiator -> budget_recheck -> request_approval -> wait_approval (interrupt)
@@ -220,7 +238,8 @@ balasan WhatsApp berjam-jam kemudian melanjutkan thread yang sama.
 
 State machine PO dijaga di database:
 `draft -> waiting_approval -> approved -> sent` (atau `rejected`, atau kembali `draft` saat revisi/kedaluwarsa).
-`mark_po_sent` menolak PO yang belum `approved`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
+`mark_po_sent` menolak PO yang belum `approved`; claim Gmail juga menolak jika approval WhatsApp terbaru
+bukan `OK`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
 Barang terkirim dicatat sebagai `incoming_qty` (Supabase) dan tab `Incoming` (Google Sheets), bukan stok fisik.
 Idempotensi: satu job cron per hari, satu approval per negotiation run, `decision_ref` unik per balasan
 Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.

@@ -1,0 +1,42 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.46.6
+    container_name: stockqu-n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    environment:
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: "http://localhost:${N8N_PORT:-5678}"
+      N8N_WEBHOOK_URL: "http://localhost:${N8N_PORT:-5678}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
+      STOCKQU_AGENT_SERVICE_URL: "${STOCKQU_AGENT_SERVICE_URL:-}"
+      TWILIO_WHATSAPP_FROM: "${TWILIO_WHATSAPP_FROM:-}"
+      STOCKQU_WA_INBOUND_URL: "${STOCKQU_WA_INBOUND_URL:-}"
+      GENERIC_TIMEZONE: Asia/Jakarta
+      TZ: Asia/Jakarta
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_PUBLIC_API_DISABLED: "true"
+      N8N_COMMUNITY_PACKAGES_ENABLED: "false"
+      # W1-W5 membaca URL provider dari environment; hanya import workflow tepercaya.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_UNVERIFIED_PACKAGES_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_RUNNERS_TASK_TIMEOUT: 60
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: 268435456
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: 1000
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 168
+    volumes:
+      - stockqu_n8n_data:/home/node/.n8n
+      - ./:/workflows:ro
+
+volumes:
+  stockqu_n8n_data:
