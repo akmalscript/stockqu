@@ -13,13 +13,11 @@ import streamlit as st
 from src.config import LABEL_NOT_FOUND
 from src.services import agent_service_client as agent_service
 from src.services.approval import APPROVER_ROLES_DASHBOARD
-from src.services.auth import ALL_USER_ROLES, ROLE_SUPER_ADMIN, require_streamlit_access
-from src.services.supabase_client import SupabaseRepository
+from src.services.auth import ALL_USER_ROLES, ROLE_SUPER_ADMIN
+from src.ui.session import page_context
 from src.utils.errors import safe_error
 
-st.set_page_config(page_title="StockQu - PO & Approval", page_icon="📦", layout="wide")
-actor, user_client = require_streamlit_access(ALL_USER_ROLES, "melihat PO dan approval")
-repository = SupabaseRepository(read_client=user_client)
+actor, user_client, repository = page_context(ALL_USER_ROLES, "melihat PO dan approval")
 st.title("PO & Approval")
 st.caption("Human-in-the-loop: tanpa OK manager (WhatsApp atau dashboard), PO tidak dikirim dan stok tidak di-update.")
 

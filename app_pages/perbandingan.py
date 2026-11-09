@@ -15,20 +15,18 @@ from src.services.auth import (
     NEGOTIATOR_RUN_ROLES,
     NEGOTIATOR_VIEW_ROLES,
     SUPPLIER_DOCUMENT_ADMIN_ROLES,
-    require_streamlit_access,
 )
 from src.services.exports import comparison_xlsx_bytes, po_pdf_bytes
-from src.services.supabase_client import SupabaseRepository, has_write_key
+from src.services.supabase_client import has_write_key
 from src.services.work_admission import (
     WorkflowDeadlineExceeded,
     WorkRejected,
     work_admission,
 )
+from src.ui.session import page_context
 from src.utils.errors import safe_error
 
-st.set_page_config(page_title="StockQu - Perbandingan Supplier", page_icon="📦", layout="wide")
-actor, user_client = require_streamlit_access(NEGOTIATOR_VIEW_ROLES, "melihat perbandingan supplier")
-repository = SupabaseRepository(read_client=user_client)
+actor, user_client, repository = page_context(NEGOTIATOR_VIEW_ROLES, "melihat perbandingan supplier")
 st.title("Perbandingan Supplier & Draft PO")
 st.caption(
     f"Agent 3 - The Negotiator | minimal {MIN_SUPPLIERS} supplier per item | kutipan kontrak (RAG) | "

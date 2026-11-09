@@ -470,6 +470,66 @@ class SupabaseRepository:
         rows = self.read.table("suppliers").select("id, email").execute().data or []
         return {str(r["id"]): r.get("email") for r in rows}
 
+    # ---------- P5 dashboard (JWT user, RLS) ----------
+    ADMIN_TABLES = frozenset({"products", "suppliers", "contracts", "budgets"})
+
+    def fetch_inventory_detailed(self) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("inventory")
+            .select("id, product_id, branch_id, stock_qty, incoming_qty, updated_at")
+            .order("id")
+        )
+
+    def fetch_recent_agent_logs(self, limit: int = 500, agent: str | None = None, run_id: str | None = None) -> list[dict]:
+        query = self.read.table("agent_logs").select("*").order("created_at", desc=True).limit(min(limit, 2000))
+        if agent:
+            query = query.eq("agent_name", agent)
+        if run_id:
+            query = query.eq("run_id", run_id)
+        return query.execute().data or []
+
+    def fetch_procurement_plans(self, limit: int = 20) -> list[dict]:
+        return (
+            self.read.table("procurement_plans")
+            .select("id, run_id, analyst_run_id, period, status, proposed_total, created_at")
+            .order("created_at", desc=True).limit(limit).execute().data or []
+        )
+
+    def fetch_negotiation_runs(self, limit: int = 20) -> list[dict]:
+        return (
+            self.read.table("negotiation_runs")
+            .select("id, run_id, plan_id, status, po_total, created_at")
+            .order("created_at", desc=True).limit(limit).execute().data or []
+        )
+
+    def fetch_admin_rows(self, table: str) -> list[dict]:
+        if table not in self.ADMIN_TABLES:
+            raise ValueError(f"tabel {table} tidak boleh dikelola dari Admin")
+        return self._fetch_all(lambda: self.read.table(table).select("*").order("id"))
+
+    def admin_insert(self, table: str, row: dict) -> dict:
+        if table not in self.ADMIN_TABLES:
+            raise ValueError(f"tabel {table} tidak boleh dikelola dari Admin")
+        return (self.read.table(table).insert(to_jsonable(row)).execute().data or [{}])[0]
+
+    def admin_update(self, table: str, row_id: str, row: dict) -> dict:
+        if table not in self.ADMIN_TABLES:
+            raise ValueError(f"tabel {table} tidak boleh dikelola dari Admin")
+        data = self.read.table(table).update(to_jsonable(row)).eq("id", row_id).execute().data
+        if not data:
+            raise PermissionError("Tidak ada baris yang berubah (RLS menolak atau id tidak ada)")
+        return data[0]
+
+    def admin_delete(self, table: str, row_id: str) -> None:
+        if table not in self.ADMIN_TABLES:
+            raise ValueError(f"tabel {table} tidak boleh dikelola dari Admin")
+        data = self.read.table(table).delete().eq("id", row_id).execute().data
+        if not data:
+            raise PermissionError("Tidak ada baris yang terhapus (RLS menolak atau id tidak ada)")
+
+    def fetch_audit_log(self, limit: int = 100) -> list[dict]:
+        return self.read.table("audit_log").select("*").order("created_at", desc=True).limit(limit).execute().data or []
+
 
 def to_jsonable(value: Any) -> Any:
     """Ubah inf/NaN jadi None supaya aman disimpan ke JSON/Postgres."""

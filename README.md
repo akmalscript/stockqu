@@ -228,6 +228,28 @@ Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
 Approval: balas `OK APR-...`, `TOLAK APR-...`, atau `REVISI APR-...` dari nomor di `APPROVER_WHATSAPP_NUMBERS`.
 Signature Twilio diverifikasi. Jika WhatsApp gagal, manager bisa memutuskan di halaman **PO & Approval**.
 
+## P5 - Dashboard & Laporan
+
+Jalankan migration `supabase/migrations/20261110100000_p5_admin_audit.sql` (setelah P4): RLS tulis
+Super Admin untuk produk/supplier/kontrak/budget, plafon budget Rp 50 jt di database, dan `audit_log`
+append-only yang diisi trigger.
+
+`app.py` adalah router `st.navigation`: login Supabase Auth sekali, lalu 11 halaman di `app_pages/`.
+Menu mengikuti role (hanya UX), sedangkan data tetap disaring RLS dengan JWT user.
+
+| Seksi | Halaman | Role |
+|---|---|---|
+| Operasional | Command center (status agent per tahap, jalankan sekarang), Inventori (stok fisik + in-transit per cabang) | semua |
+| Agent | Prediksi & risiko, PO & approval | semua |
+| Agent | Rencana pembelian, Perbandingan supplier | Super Admin, Purchasing Staff, Procurement Manager |
+| Jejak & laporan | Reason trace (faktor + sumber, tautan ke log run), Execution log, Analitik (KPI berlabel aktual/backtest/target), Ekspor (PDF/Excel) | semua |
+| Pengaturan | Admin (CRUD master data, upload kontrak, audit log, panduan user/role) | Super Admin |
+
+Role user diatur di Supabase Dashboard -> Authentication -> Users -> `app_metadata`,
+misalnya `{"role": "warehouse_manager", "branch_ids": ["<uuid Branch 1>"]}`.
+Untuk tombol **Jalankan** dan approval dashboard, isi `STOCKQU_AGENT_SERVICE_URL` dan `N8N_TO_SERVICE_TOKEN`
+di Streamlit secrets.
+
 ## Quality gate lokal
 
 Test tidak memerlukan network atau kredensial live:
@@ -258,7 +280,7 @@ Jangan pernah commit: `.env`, `.venv/`, `.streamlit/secrets.toml`
 stockqu/
   AGENTS.md
   app.py
-  pages/         # Halaman Streamlit Analyst + Purchaser
+  app_pages/     # 11 halaman Streamlit (router st.navigation di app.py)
   scripts/       # CLI: run_analyst.py + run_purchaser.py
   tests/         # pytest (tanpa jaringan)
   requirements.txt
