@@ -13,25 +13,193 @@
       "name": "PO approved (dari Agent Service)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_ME",
-          "name": "StockQu inbound (Bearer SERVICE_TO_N8N_TOKEN)"
-        }
-      },
+      "position": [0, 0],
       "webhookId": "stockqu-po-email"
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/claim_approved_po_email_delivery' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { p_po_id: $('PO approved (dari Agent Service)').first().json.body.po_id, p_n8n_execution_id: $execution.id, p_recipient_email: $('PO approved (dari Agent Service)').first().json.body.to } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "65aceee0-f3e8-41e1-a9e4-a38bcd7eebea",
+      "name": "Claim Approved PO",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [240, 0],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "50f977b6-aef5-49a4-923e-e8c1bb9039fd",
+              "leftValue": "={{ $json.claimed === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1c28051c-becd-44c2-8890-e3580225ef80",
+      "name": "PO Claimed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9c397d64-f7cf-4d55-b043-418ff1928842",
+              "leftValue": "={{ $json.reason === 'ALREADY_SENT' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c9727e73-a850-46b9-a5f6-0e7c62ff2895",
+      "name": "Already Sent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [720, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ad0edac5-c1a1-4900-a30b-45889aaf2ae6",
+              "leftValue": "={{ $json.reason === 'ALREADY_CLAIMED' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e7eb374c-c05b-48f7-8323-8a0de552f15f",
+      "name": "Concurrent Claim?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ea6b807d-21b8-4e94-ac1d-09abe561e68e",
+              "name": "sent",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "276d79cb-78e0-40c0-98d9-03d41991b45a",
+              "name": "skipped",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "3a321ccc-05b4-4fae-9395-965caa7801db",
+              "name": "reason",
+              "value": "={{ $json.reason }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a8355174-b40a-4b92-a298-3d9882ecb390",
+      "name": "Return Idempotent Skip",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, 240]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ `PO email was blocked safely: ${$json.reason ?? $json.error?.message ?? 'SUPABASE_CLAIM_FAILED'}` }}"
+      },
+      "id": "7e291903-3060-4836-9465-4957d913d444",
+      "name": "Stop Claim Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1200, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const claim = $input.first().json;\nconst payload = $('PO approved (dari Agent Service)').first().json.body ?? {};\nif (String(payload.po_id ?? '') !== String(claim.po_id ?? '')) throw new Error('PO_ID_MISMATCH');\nif (String(payload.po_number ?? '') !== String(claim.po_number ?? '')) throw new Error('PO_NUMBER_MISMATCH');\nconst pdf = String(payload.pdf_base64 ?? '').trim();\nif (!pdf || pdf.length > 20000000 || !/^[A-Za-z0-9+/\\r\\n]+={0,2}$/.test(pdf)) throw new Error('PO_PDF_INVALID');\nconst subject = String(payload.subject ?? `Purchase Order ${claim.po_number} - StockQu`).replace(/[\\r\\n]+/g, ' ').trim().slice(0, 200);\nconst emailBody = String(payload.body ?? '').slice(0, 20000);\nreturn [{ json: { ...claim, subject, email_body: emailBody, pdf_base64: pdf, pdf_filename: `${claim.po_number}.pdf` } }];"
+      },
+      "id": "a1c49282-6102-4215-ad1e-af6bd8085af3",
+      "name": "Prepare PO Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, -120]
+    },
+    {
+      "parameters": {
         "operation": "toBinary",
-        "sourceProperty": "body.pdf_base64",
+        "sourceProperty": "pdf_base64",
         "binaryPropertyName": "po_pdf",
         "options": {
-          "fileName": "={{ $json.body.pdf_filename }}",
+          "fileName": "={{ $json.pdf_filename }}",
           "mimeType": "application/pdf"
         }
       },
@@ -39,17 +207,17 @@
       "name": "PDF PO",
       "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
-      "position": [
-        240,
-        0
-      ]
+      "position": [960, -120]
     },
     {
       "parameters": {
-        "sendTo": "={{ $('PO approved (dari Agent Service)').item.json.body.to }}",
-        "subject": "={{ $('PO approved (dari Agent Service)').item.json.body.subject }}",
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $('Prepare PO Payload').first().json.recipient_email }}",
+        "subject": "={{ $('Prepare PO Payload').first().json.subject }}",
         "emailType": "text",
-        "message": "={{ $('PO approved (dari Agent Service)').item.json.body.body }}",
+        "message": "={{ $('Prepare PO Payload').first().json.email_body }}",
         "options": {
           "attachmentsUi": {
             "attachmentsBinary": [
@@ -58,89 +226,372 @@
               }
             ]
           },
-          "appendAttribution": false
+          "appendAttribution": false,
+          "senderName": "StockQu Procurement"
         }
       },
       "id": "3aef403b-ef12-5506-a376-76f196731e2a",
       "name": "W4 - Gmail kirim PO",
       "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [
-        480,
-        0
-      ],
-      "credentials": {
-        "gmailOAuth2": {
-          "id": "REPLACE_ME",
-          "name": "Gmail StockQu"
-        }
-      }
+      "typeVersion": 2.2,
+      "position": [1200, -120],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9be1cb5d-169d-4602-962f-c7d310ac2d44",
+              "leftValue": "={{ typeof $json.id === 'string' && $json.id.length > 0 && !$json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aac15319-216f-48fd-9aaa-21cec28de9d2",
+      "name": "Gmail Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1440, -120]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $('PO approved (dari Agent Service)').item.json.body.callback_url }}",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/complete_po_email_delivery' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { p_po_id: $('PO approved (dari Agent Service)').first().json.body.po_id, p_n8n_execution_id: $execution.id, p_provider_message_id: $('W4 - Gmail kirim PO').first().json.id } }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "5d15dabd-93bb-4b99-9a0f-d10ff38d8040",
+      "name": "Complete Delivery Audit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1680, -180],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "54fce1da-1bf3-4c61-a9b7-ec95a9f1ba0e",
+              "leftValue": "={{ $json.sent === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "07cf7f97-825b-4faf-8b17-bfd6dc735e36",
+      "name": "Audit Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1920, -180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STOCKQU_AGENT_SERVICE_URL + '/purchase-orders/' + encodeURIComponent($json.po_number) + '/sent' }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ email_message_id: $json.id }) }}",
+        "jsonBody": "={{ { email_message_id: $json.provider_message_id } }}",
         "options": {
-          "timeout": 30000,
-          "retry": {
-            "maxTries": 3,
-            "waitBetweenTries": 2000
-          }
+          "timeout": 30000
         }
       },
       "id": "bf91db2b-8f89-566a-bd04-a92d061aff68",
-      "name": "W5 - Tandai sent + stok in-transit",
+      "name": "W5 - Sinkronkan Agent Service + Sheets",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        720,
-        0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_ME",
-          "name": "StockQu Agent Service (Bearer N8N_TO_SERVICE_TOKEN)"
+      "typeVersion": 4.3,
+      "position": [2160, -60],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e708a50e-6039-4199-9b22-158d840f9110",
+              "leftValue": "={{ $json.status === 'sent' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e694fa90-b3aa-4ddf-9654-aaab69bbf1ee",
+      "name": "Callback Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2400, -60]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5ad81b5f-a872-464a-9d79-d345d0e639bf",
+              "name": "sent",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "6b507c5f-b236-4313-b02c-9a33d0a0bc20",
+              "name": "po_id",
+              "value": "={{ $('PO approved (dari Agent Service)').first().json.body.po_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5d683a6c-f68f-4a5d-9844-d2cf88aa6413",
+      "name": "Return Delivery Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2640, -120]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Gmail sent the PO and Supabase was updated, but the Agent Service/Sheets callback failed. Retry the webhook to reconcile Sheets; the outbox prevents a duplicate email."
+      },
+      "id": "d812835b-20b7-48b3-a99c-bf976861e253",
+      "name": "Stop Callback Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2640, 60]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Gmail accepted the PO, but the atomic Supabase audit/status update failed. Reconcile the outbox before retrying."
+      },
+      "id": "55316f9c-c495-42bd-935b-01bb53a03a3e",
+      "name": "Stop Audit Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2160, -240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL + '/rest/v1/rpc/fail_po_email_delivery' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { p_po_id: $('PO approved (dari Agent Service)').first().json.body.po_id, p_n8n_execution_id: $execution.id, p_error_code: 'GMAIL_SEND_FAILED' } }}",
+        "options": {
+          "timeout": 20000
         }
-      }
+      },
+      "id": "418bf647-fb1e-4f60-981f-9f867cf48cad",
+      "name": "Record Gmail Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1680, 60],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "802eaa24-714c-409b-b9c1-ea2a880fa6c1",
+              "leftValue": "={{ $json.failed === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b537bc93-e6d4-4caa-86b1-0bf00234dd7f",
+      "name": "Failure Recorded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1920, 60]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Gmail did not accept the approved PO. The failure was recorded; inspect Gmail Sent and the execution before retrying."
+      },
+      "id": "e24ba355-5805-4820-973e-55d5de0f6097",
+      "name": "Stop Gmail Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2160, 0]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Gmail did not accept the PO and Supabase could not record the failure. Reconcile the sending outbox row before retrying."
+      },
+      "id": "09f90fbc-b30f-4e5b-9988-d31100651d94",
+      "name": "Stop Failure Audit Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2160, 120]
+    },
+    {
+      "parameters": {
+        "content": "## Setup wajib sebelum aktivasi\n\n1. Pilih credential **StockQu inbound** pada Webhook.\n2. Pilih **StockQu Supabase Service Role** pada tiga node RPC.\n3. Pilih **StockQu Gmail OAuth2** pada node Gmail.\n4. Pilih **StockQu Agent Service** pada callback W5.\n5. Terapkan migration outbox lalu test PO yang belum approved dan PO test yang sudah menerima OK WhatsApp.\n\nGmail tidak di-retry otomatis. Outbox dan RPC menjaga idempotensi; callback replay hanya memperbaiki sinkronisasi Sheets.",
+        "height": 380,
+        "width": 460
+      },
+      "id": "7740d63c-22e5-4299-bc7e-ec13b837d74c",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -420]
     }
   ],
   "connections": {
     "PO approved (dari Agent Service)": {
+      "main": [[{"node": "Claim Approved PO", "type": "main", "index": 0}]]
+    },
+    "Claim Approved PO": {
+      "main": [[{"node": "PO Claimed?", "type": "main", "index": 0}]]
+    },
+    "PO Claimed?": {
       "main": [
-        [
-          {
-            "node": "PDF PO",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Prepare PO Payload", "type": "main", "index": 0}],
+        [{"node": "Already Sent?", "type": "main", "index": 0}]
       ]
+    },
+    "Already Sent?": {
+      "main": [
+        [{"node": "W5 - Sinkronkan Agent Service + Sheets", "type": "main", "index": 0}],
+        [{"node": "Concurrent Claim?", "type": "main", "index": 0}]
+      ]
+    },
+    "Concurrent Claim?": {
+      "main": [
+        [{"node": "Return Idempotent Skip", "type": "main", "index": 0}],
+        [{"node": "Stop Claim Failure", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare PO Payload": {
+      "main": [[{"node": "PDF PO", "type": "main", "index": 0}]]
     },
     "PDF PO": {
-      "main": [
-        [
-          {
-            "node": "W4 - Gmail kirim PO",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{"node": "W4 - Gmail kirim PO", "type": "main", "index": 0}]]
     },
     "W4 - Gmail kirim PO": {
+      "main": [[{"node": "Gmail Accepted?", "type": "main", "index": 0}]]
+    },
+    "Gmail Accepted?": {
       "main": [
-        [
-          {
-            "node": "W5 - Tandai sent + stok in-transit",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Complete Delivery Audit", "type": "main", "index": 0}],
+        [{"node": "Record Gmail Failure", "type": "main", "index": 0}]
+      ]
+    },
+    "Complete Delivery Audit": {
+      "main": [[{"node": "Audit Completed?", "type": "main", "index": 0}]]
+    },
+    "Audit Completed?": {
+      "main": [
+        [{"node": "W5 - Sinkronkan Agent Service + Sheets", "type": "main", "index": 0}],
+        [{"node": "Stop Audit Failure", "type": "main", "index": 0}]
+      ]
+    },
+    "W5 - Sinkronkan Agent Service + Sheets": {
+      "main": [[{"node": "Callback Completed?", "type": "main", "index": 0}]]
+    },
+    "Callback Completed?": {
+      "main": [
+        [{"node": "Return Delivery Success", "type": "main", "index": 0}],
+        [{"node": "Stop Callback Failure", "type": "main", "index": 0}]
+      ]
+    },
+    "Record Gmail Failure": {
+      "main": [[{"node": "Failure Recorded?", "type": "main", "index": 0}]]
+    },
+    "Failure Recorded?": {
+      "main": [
+        [{"node": "Stop Gmail Failure", "type": "main", "index": 0}],
+        [{"node": "Stop Failure Audit Failure", "type": "main", "index": 0}]
       ]
     }
   },
@@ -148,10 +599,13 @@
   "settings": {
     "executionOrder": "v1",
     "timezone": "Asia/Jakarta",
-    "saveDataErrorExecution": "all"
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": true,
+    "executionTimeout": 120
   },
   "meta": {
-    "stockqu": "Webhook ini hanya dipanggil untuk PO berstatus approved. W5 ditolak database bila PO belum approved."
+    "stockqu": "Database memvalidasi PO approved + approval WhatsApp OK. Outbox mencegah email duplikat dan callback replay memperbaiki sinkronisasi Sheets."
   },
   "pinData": {}
 }

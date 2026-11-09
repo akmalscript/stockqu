@@ -22,6 +22,8 @@ supabase/.temp/
 
 # n8n
 n8n/credentials/
+n8n/.env*
+!n8n/.env.example
 
 # Data lokal dan hasil export
 data/*.xlsx
