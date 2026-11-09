@@ -89,7 +89,17 @@ Untuk self-hosted n8n, Google OAuth dibuat melalui Google Cloud:
    ```
 
 5. Di n8n buat credential **Gmail OAuth2 API**, isi Client ID dan Client Secret,
-   lalu klik **Sign in with Google**.
+   gunakan dua scope minimum berikut, lalu klik **Sign in with Google**:
+
+   ```text
+   https://www.googleapis.com/auth/gmail.send
+   https://www.googleapis.com/auth/gmail.metadata
+   ```
+
+   Scope `gmail.send` dipakai untuk mengirim PO. Scope `gmail.metadata` diperlukan
+   karena node Gmail n8n memanggil profil akun saat menguji credential; scope ini
+   hanya memberi akses metadata/header dan tidak memberi akses isi email. Jangan
+   memakai scope penuh `https://mail.google.com/`.
 6. Pilih credential itu pada node **W4 - Gmail kirim PO**.
 
 Jangan kirim Client Secret atau token OAuth melalui chat dan jangan commit ke
