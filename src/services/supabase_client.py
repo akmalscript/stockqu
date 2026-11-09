@@ -121,7 +121,7 @@ class SupabaseRepository:
         end = datetime(year + (month == 12), 1 if month == 12 else month + 1, 1, tzinfo=start.tzinfo)
         return self._fetch_all(
             lambda: self.read.table("purchase_orders")
-            .select("id, total_amount, status, created_at")
+            .select("id, supplier_id, total_amount, status, created_at")
             .gte("created_at", start.isoformat())
             .lt("created_at", end.isoformat())
             .order("created_at")
