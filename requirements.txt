@@ -27,6 +27,7 @@ google-auth-oauthlib>=1.2.0
 # Export PDF dan Excel - F-35
 openpyxl>=3.1.0
 fpdf2>=2.8.0
+pypdf>=5.1.0  # ekstraksi teks kontrak PDF untuk RAG Negotiator (P3)
 xlsxwriter>=3.2.0
 
 # Visualisasi Dashboard

@@ -273,6 +273,111 @@ class SupabaseRepository:
             or []
         )
 
+    # ---------- P3 negotiator: input ----------
+    def fetch_suppliers(self) -> list[dict]:
+        return (
+            self.read.table("suppliers")
+            .select("id, name, contact, lead_time_days, performance_score")
+            .order("name")
+            .execute()
+            .data
+            or []
+        )
+
+    def fetch_supplier_documents(self) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("supplier_documents")
+            .select("id, supplier_id, doc_type, title, version, valid_from, valid_until, page_count, source, created_at")
+            .order("created_at", desc=True)
+        )
+
+    def fetch_document_chunks(self, document_ids: list[str]) -> list[dict]:
+        if not document_ids:
+            return []
+        return self._fetch_all(
+            lambda: self.read.table("supplier_document_chunks")
+            .select("document_id, chunk_index, page, clause_ref, content")
+            .in_("document_id", document_ids)
+            .order("id")
+        )
+
+    def fetch_plan_reservation(self, plan_id: str) -> dict | None:
+        res = (
+            self.read.table("procurement_budget_reservations")
+            .select("plan_id, period, amount, status")
+            .eq("plan_id", plan_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    # ---------- P3 negotiator: dokumen (service role) ----------
+    def find_supplier_document_by_sha(self, sha256: str) -> dict | None:
+        res = self.write.table("supplier_documents").select("*").eq("sha256", sha256).limit(1).execute()
+        return res.data[0] if res.data else None
+
+    def next_document_version(self, supplier_id: str, doc_type: str) -> int:
+        res = (
+            self.write.table("supplier_documents")
+            .select("version")
+            .eq("supplier_id", supplier_id)
+            .eq("doc_type", doc_type)
+            .order("version", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return int(res.data[0]["version"]) + 1 if res.data else 1
+
+    def upload_document(self, bucket: str, path: str, data: bytes) -> None:
+        self.write.storage.from_(bucket).upload(
+            path, data, {"content-type": "application/pdf", "upsert": "true"}
+        )
+
+    def download_document(self, bucket: str, path: str) -> bytes:
+        return self.write.storage.from_(bucket).download(path)
+
+    def insert_supplier_document(self, row: dict) -> dict:
+        res = self.write.table("supplier_documents").insert(row).execute()
+        return res.data[0]
+
+    def insert_document_chunks(self, rows: list[dict]) -> int:
+        if rows:
+            self.write.table("supplier_document_chunks").insert(rows).execute()
+        return len(rows)
+
+    def delete_supplier_document(self, document_id: str) -> None:
+        self.write.table("supplier_documents").delete().eq("id", document_id).execute()
+
+    # ---------- P3 negotiator: persist + UI ----------
+    def persist_negotiation(self, run: dict, comparisons: list[dict], pos: list[dict]) -> str:
+        res = self.write.rpc(
+            "persist_negotiation",
+            {"p_run": to_jsonable(run), "p_comparisons": to_jsonable(comparisons), "p_pos": to_jsonable(pos)},
+        ).execute()
+        if not res.data:
+            raise RuntimeError("RPC persist_negotiation tidak mengembalikan id")
+        return str(res.data)
+
+    def latest_negotiation_run(self) -> dict | None:
+        res = self.read.table("negotiation_runs").select("*").order("created_at", desc=True).limit(1).execute()
+        return res.data[0] if res.data else None
+
+    def fetch_supplier_comparisons(self, negotiation_run_uuid: str) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("supplier_comparisons")
+            .select("*")
+            .eq("negotiation_run_id", negotiation_run_uuid)
+            .order("id")
+        )
+
+    def fetch_draft_purchase_orders(self, negotiation_run_uuid: str) -> list[dict]:
+        return self._fetch_all(
+            lambda: self.read.table("purchase_orders")
+            .select("id, po_number, supplier_id, branch_id, total_amount, status, expected_arrival, draft, created_at")
+            .eq("negotiation_run_id", negotiation_run_uuid)
+            .order("po_number")
+        )
+
 
 def to_jsonable(value: Any) -> Any:
     """Ubah inf/NaN jadi None supaya aman disimpan ke JSON/Postgres."""

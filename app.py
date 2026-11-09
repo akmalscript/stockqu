@@ -82,6 +82,7 @@ def main():
         st.warning("CONTOH SIMULASI - BUKAN DATA REAL. Ganti dengan baca Supabase / Google Sheets.")
         st.page_link("pages/1_Prediksi_dan_Risiko.py", label="Buka hasil Agent Analyst (Prediksi & Risiko, data Supabase)", icon="📈")
         st.page_link("pages/2_Rencana_Pembelian.py", label="Buka hasil Agent Purchaser (Rencana Pembelian, data Supabase)", icon="🧾")
+        st.page_link("pages/3_Perbandingan_Supplier.py", label="Buka hasil Agent Negotiator (Perbandingan Supplier & Draft PO)", icon="🏷️")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Item Berisiko Habis (4-7 hari)", f"{len(df[df['days_to_stockout'] <= STOCKOUT_THRESHOLD_DAYS])} item")
         col2.metric("Item URGENT (<= 4 hari)", f"{len(df[df['days_to_stockout'] <= URGENT_THRESHOLD_DAYS])} item")
