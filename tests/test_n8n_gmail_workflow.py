@@ -73,6 +73,15 @@ def test_gmail_send_is_approval_gated_idempotent_and_has_failure_path():
     assert "Record Gmail Failure" in workflow["connections"]["Gmail Accepted?"][
         "main"
     ][1][0]["node"]
+    assert "Failure Recorded?" in workflow["connections"]["Record Gmail Failure"][
+        "main"
+    ][0][0]["node"]
+    assert workflow["connections"]["Failure Recorded?"]["main"][0][0]["node"] == (
+        "Stop Gmail Failure"
+    )
+    assert workflow["connections"]["Failure Recorded?"]["main"][1][0]["node"] == (
+        "Stop Failure Audit Failure"
+    )
     assert "W5 - Sinkronkan Agent Service + Sheets" in workflow["connections"][
         "Audit Completed?"
     ]["main"][0][0]["node"]

@@ -465,13 +465,54 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "802eaa24-714c-409b-b9c1-ea2a880fa6c1",
+              "leftValue": "={{ $json.failed === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b537bc93-e6d4-4caa-86b1-0bf00234dd7f",
+      "name": "Failure Recorded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1920, 60]
+    },
+    {
+      "parameters": {
         "errorMessage": "Gmail did not accept the approved PO. The failure was recorded; inspect Gmail Sent and the execution before retrying."
       },
       "id": "e24ba355-5805-4820-973e-55d5de0f6097",
       "name": "Stop Gmail Failure",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
-      "position": [1920, 60]
+      "position": [2160, 0]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Gmail did not accept the PO and Supabase could not record the failure. Reconcile the sending outbox row before retrying."
+      },
+      "id": "09f90fbc-b30f-4e5b-9988-d31100651d94",
+      "name": "Stop Failure Audit Failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [2160, 120]
     },
     {
       "parameters": {
@@ -545,7 +586,13 @@
       ]
     },
     "Record Gmail Failure": {
-      "main": [[{"node": "Stop Gmail Failure", "type": "main", "index": 0}]]
+      "main": [[{"node": "Failure Recorded?", "type": "main", "index": 0}]]
+    },
+    "Failure Recorded?": {
+      "main": [
+        [{"node": "Stop Gmail Failure", "type": "main", "index": 0}],
+        [{"node": "Stop Failure Audit Failure", "type": "main", "index": 0}]
+      ]
     }
   },
   "active": false,
