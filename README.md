@@ -79,6 +79,11 @@ credential Supabase, migration outbox, import workflow, dan pengujian approval
 ada di [`n8n/README.md`](n8n/README.md). Workflow Gmail tidak mengirim PO tanpa
 status `approved` dan approval WhatsApp terbaru `OK`.
 
+Status integrasi terakhir dan blocker sebelum demo end-to-end dicatat di
+[`docs/e2e-readiness-audit.md`](docs/e2e-readiness-audit.md). Jangan menyatakan
+demo penuh siap hanya berdasarkan unit test; cron, WhatsApp, approval, Gmail,
+dan update stok harus dibuktikan pada environment deployment yang sama.
+
 ## P1 - Data & Analyst
 
 ### 1. Database
@@ -275,7 +280,7 @@ Test tidak memerlukan network atau kredensial live:
 
 ```bash
 python -m pytest -q
-ruff check app.py pages scripts src tests
+ruff check app.py app_pages scripts src tests test_supabase.py
 git diff --check
 ```
 

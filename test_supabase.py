@@ -2,7 +2,9 @@
 # Jalankan: python test_supabase.py
 # Kalau berhasil, artinya .env + RLS + anon key sudah benar
 import os
+
 from dotenv import load_dotenv
+
 from supabase import create_client
 
 load_dotenv()

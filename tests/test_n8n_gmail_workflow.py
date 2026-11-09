@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / "n8n/w4_w5_po_email_stock_update.json"
+N8N_README_PATH = ROOT / "n8n/README.md"
 MIGRATION_PATH = (
     ROOT / "supabase/migrations/20261110110000_add_po_email_delivery_outbox.sql"
 )
@@ -130,3 +131,12 @@ def test_local_compose_is_loopback_only_and_does_not_contain_secrets():
     assert "SUPABASE_URL=" in env_example
     assert "sb_secret_" not in env_example
     assert "client_secret" not in env_example.lower()
+
+
+def test_gmail_oauth_documentation_uses_minimum_working_scopes():
+    docs = N8N_README_PATH.read_text()
+    normalized = " ".join(docs.split())
+
+    assert "https://www.googleapis.com/auth/gmail.send" in docs
+    assert "https://www.googleapis.com/auth/gmail.metadata" in docs
+    assert "Jangan memakai scope penuh `https://mail.google.com/`." in normalized
