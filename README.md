@@ -105,6 +105,32 @@ Buka `http://localhost:5678` (atau dashboard n8n Cloud Anda). Panduan lengkap pe
 
 Status integrasi terakhir dan blocker sebelum demo end-to-end dicatat di [`docs/e2e-readiness-audit.md`](docs/e2e-readiness-audit.md). Jangan menyatakan demo penuh siap hanya berdasarkan unit test; cron, WhatsApp, approval, Gmail, dan update stok harus dibuktikan pada environment deployment yang sama.
 
+### Login demo lokal
+
+Akun demo hanya boleh dibuat di Supabase lokal; script akan menolak URL project
+hosted. Password dan service-role key lokal tidak disimpan di Git.
+
+```bash
+# Batasi service Docker ke loopback (buat network jika belum ada).
+docker network inspect stockqu-local >/dev/null 2>&1 || \
+  docker network create \
+    -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 \
+    stockqu-local
+npx --yes supabase@3.0.0 start --network-id stockqu-local
+npx --yes supabase@3.0.0 status -o env
+
+# Salin API_URL dan SERVICE_ROLE_KEY dari output status ke shell ini.
+export SUPABASE_URL="http://127.0.0.1:54321"
+export SUPABASE_SERVICE_ROLE_KEY="<LOCAL_SERVICE_ROLE_KEY>"
+export STOCKQU_DEMO_EMAIL="demo@stockqu.local"
+export STOCKQU_DEMO_PASSWORD="<PASSWORD_ACAK_MINIMAL_16_KARAKTER>"
+python -m scripts.seed_demo_user
+```
+
+Jalankan Streamlit dengan `SUPABASE_URL` dari `API_URL` dan
+`SUPABASE_ANON_KEY` dari `PUBLISHABLE_KEY` lokal pada output status. Untuk
+keamanan, jangan gunakan script demo ini pada Supabase hosted atau production.
+
 ## P1 - Data & Analyst
 
 ### 1. Database
