@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.services.approval import (
     APPROVER_ROLES_DASHBOARD,
@@ -71,9 +71,11 @@ class DailyRunRequest(BaseModel):
 
 
 class WhatsAppReply(BaseModel):
-    webhook_url: str = Field(max_length=500)  # URL publik n8n yang dipanggil Twilio (untuk signature)
+    model_config = ConfigDict(extra="allow")
+
+    webhook_url: str = Field(default="", max_length=500)  # URL publik n8n yang dipanggil Twilio (untuk signature)
     twilio_signature: str = Field(default="", max_length=200)
-    params: dict[str, str]  # seluruh form param Twilio apa adanya (From, Body, MessageSid, ...)
+    params: dict[str, Any] = Field(default_factory=dict)  # seluruh form param Twilio apa adanya (From, Body, MessageSid, ...)
 
 
 class DashboardDecision(BaseModel):
@@ -117,10 +119,13 @@ def daily_run(req: DailyRunRequest) -> dict:
 def whatsapp_reply(req: WhatsAppReply) -> dict:
     """Selalu 200 dengan reply_text supaya n8n bisa membalas WA; state hanya berubah bila semua cek lolos."""
     try:
-        verify_twilio_signature(req.webhook_url, req.params, req.twilio_signature)
-        phone = require_whitelisted(req.params.get("From", ""))
-        parsed = parse_reply(req.params.get("Body", ""))
-        sid = req.params.get("MessageSid", "")
+        raw_params = dict(req.params)
+        if not raw_params and req.model_extra:
+            raw_params = {str(k): str(v) for k, v in req.model_extra.items() if k not in ("webhook_url", "twilio_signature")}
+        verify_twilio_signature(req.webhook_url, raw_params, req.twilio_signature)
+        phone = require_whitelisted(raw_params.get("From", ""))
+        parsed = parse_reply(raw_params.get("Body", ""))
+        sid = raw_params.get("MessageSid", "")
         if not sid:
             raise ApprovalRejected("MessageSid kosong")
     except ApprovalRejected as exc:

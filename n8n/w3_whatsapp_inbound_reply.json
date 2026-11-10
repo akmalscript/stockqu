@@ -20,30 +20,6 @@
     },
     {
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "<Response></Response>",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/xml"
-              }
-            ]
-          }
-        }
-      },
-      "id": "c7121e8a-5f1d-5b23-a7df-f1da6283b7dd",
-      "name": "Ack Twilio",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [
-        240,
-        0
-      ]
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "={{ $env.STOCKQU_AGENT_SERVICE_URL }}/webhooks/whatsapp-reply",
         "authentication": "genericCredentialType",
@@ -64,7 +40,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        480,
+        260,
         0
       ],
       "credentials": {
@@ -76,40 +52,31 @@
     },
     {
       "parameters": {
-        "from": "={{ $env.TWILIO_WHATSAPP_FROM }}",
-        "to": "={{ $('Twilio inbound').item.json.body.From.replace('whatsapp:', '') }}",
-        "toWhatsapp": true,
-        "message": "={{ $json.reply_text }}"
-      },
-      "id": "09d799b9-4783-5f3e-8d49-498470ba479d",
-      "name": "Balas konfirmasi WA",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
-      "position": [
-        720,
-        0
-      ],
-      "credentials": {
-        "twilioApi": {
-          "id": "REPLACE_ME",
-          "name": "Twilio WhatsApp Sandbox"
+        "respondWith": "text",
+        "responseBody": "=<Response><Message>{{ $json.reply_text }}</Message></Response>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/xml"
+              }
+            ]
+          }
         }
-      }
+      },
+      "id": "c7121e8a-5f1d-5b23-a7df-f1da6283b7dd",
+      "name": "Balas TwiML ke Twilio",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        0
+      ]
     }
   ],
   "connections": {
     "Twilio inbound": {
-      "main": [
-        [
-          {
-            "node": "Ack Twilio",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Ack Twilio": {
       "main": [
         [
           {
@@ -124,7 +91,7 @@
       "main": [
         [
           {
-            "node": "Balas konfirmasi WA",
+            "node": "Balas TwiML ke Twilio",
             "type": "main",
             "index": 0
           }
@@ -139,7 +106,7 @@
     "saveDataErrorExecution": "all"
   },
   "meta": {
-    "stockqu": "Signature Twilio + whitelist nomor + kode APR divalidasi di Agent Service, bukan di n8n."
+    "stockqu": "Signature Twilio + whitelist nomor + kode APR divalidasi di Agent Service, balasan dikirim langsung via TwiML XML."
   },
   "pinData": {}
 }
