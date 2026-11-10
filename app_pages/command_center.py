@@ -149,7 +149,7 @@ def workflow_status() -> None:
         job = jobs[0] if jobs else None
         with st.container(horizontal=True, vertical_alignment="center"):
             st.markdown(f"**Workflow terakhir:** `{job['run_id']}` · {job['trigger']} · **{job['status']}** · "
-                        f"mulai {local_time(job['started_at'])}" if job else f"**Workflow:** {LABEL_NOT_FOUND}")
+                        f"mulai {local_time(job['started_at'])}" if job else "**Workflow:**")
             if st.button("Jalankan", icon=":material/play_arrow:", width="content",
                          disabled=not agent_service.configured(),
                          help="Memanggil Agent Service; cron otomatis tetap jalan 07:00 WIB"):
