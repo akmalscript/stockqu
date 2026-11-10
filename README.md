@@ -258,7 +258,7 @@ Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan m
    Isinya: `supplier_documents` + `supplier_document_chunks` (RAG kontrak), `negotiation_runs`,
    `supplier_comparisons`, kolom draft PO di `purchase_orders`/`po_items`, bucket Storage privat
    `supplier-documents`, dan RPC `persist_negotiation` (khusus `service_role`).
-2. Buat dan indeks kontrak DUMMY per supplier. Isi PDF hanya dari tabel `contracts`, `suppliers`,
+2. Buat dan indeks kontrak prototype per supplier. Isi PDF hanya dari tabel `contracts`, `suppliers`,
    `products` dan berlabel `CONTOH SIMULASI - BUKAN DATA REAL`:
 
    ```bash
@@ -299,8 +299,9 @@ Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_
    `supabase/migrations/20261110110000_add_po_email_delivery_outbox.sql` untuk claim Gmail idempoten,
    audit provider message ID, dan pencegahan email ganda.
 3. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
-   Isi `suppliers.email` dengan alamat resmi supplier supaya PO bisa dikirim. Tidak ada override penerima demo,
-   dan pengiriman production diblokir selama `sales_history` masih memuat sumber `DUMMY-SEED`.
+   Untuk production, isi `suppliers.email` dengan alamat resmi supplier. Untuk prototype dengan data simulasi,
+   isi `PO_EMAIL_TEST_RECIPIENT`; sistem hanya mengirim jika seluruh email supplier diarahkan ke inbox demo itu.
+   Mode production tetap memblokir seluruh pengiriman dari data simulasi.
 4. Jalankan Agent Service di belakang HTTPS:
 
    ```bash
