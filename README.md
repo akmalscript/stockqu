@@ -165,8 +165,9 @@ Jalankan di Supabase SQL Editor, berurutan:
 2. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
 3. `supabase/migrations/20261107111649_p2_purchaser.sql` - skema dan RPC Purchaser
 4. `supabase/migrations/20261107190000_p1_p2_security_hardening.sql` - Auth/RLS, audit actor, dan reservasi budget atomik
-5. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
-   Konsisten dengan seed P0: 5 item kritis (Item A-E di Branch 1).
+5. `supabase/seed/002_sales_history_prototype.sql` - histori prototype transparan 180 hari
+   (5 item x 3 cabang, deterministik, 2.700 baris). Dataset ini bukan data bisnis nyata;
+   pengiriman email hanya boleh menuju `PO_EMAIL_TEST_RECIPIENT` saat `STOCKQU_ENV=prototype`.
 
 Isi `SUPABASE_SERVICE_ROLE_KEY` di `.env` supaya Agent bisa menyimpan hasil (`analyst_forecasts`, `agent_logs`, `sync_logs`).
 Key ini hanya untuk CLI/cron dan write backend; jangan pernah masukkan ke browser, UI, atau commit Git.

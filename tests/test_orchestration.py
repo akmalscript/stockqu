@@ -282,7 +282,9 @@ def test_reject_stops_without_email():
     assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
 
 
-def test_dummy_sales_never_dispatches_production_email():
+def test_simulation_sales_never_dispatches_production_email(monkeypatch):
+    monkeypatch.setenv("STOCKQU_ENV", "production")
+    monkeypatch.delenv("PO_EMAIL_TEST_RECIPIENT", raising=False)
     repo, notifier = P4Repo(), FakeNotifier()
     repo.has_dummy_sales = lambda: True
     rt, _ = runtime_with(repo, notifier)
@@ -294,7 +296,26 @@ def test_dummy_sales_never_dispatches_production_email():
 
     assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
     assert all(d["status"] == "blocked" for d in res["dispatch"])
-    assert all("DUMMY-SEED" in d["detail"] for d in res["dispatch"])
+    assert all("mode prototype" in d["detail"] for d in res["dispatch"])
+
+
+def test_simulation_sales_dispatches_only_to_prototype_inbox(monkeypatch):
+    monkeypatch.setenv("STOCKQU_ENV", "prototype")
+    monkeypatch.setenv("PO_EMAIL_TEST_RECIPIENT", "a@supplier.test")
+    repo, notifier = P4Repo(), FakeNotifier()
+    repo.has_dummy_sales = lambda: True
+    rt, _ = runtime_with(repo, notifier)
+    _, out = start(rt)
+    res = rt.submit_decision(out["approval"]["approval_code"], {
+        "decision": "approved", "via": "whatsapp", "decided_by": MANAGER,
+        "decision_ref": "twilio:SM-PROTOTYPE",
+    })
+
+    emails = [c for c in notifier.calls if c[0] == "N8N_PO_EMAIL_WEBHOOK_URL"]
+    assert [c[1]["po_number"] for c in emails] == ["PO-1"]
+    assert emails[0][1]["simulation"] is True
+    blocked = next(d for d in res["dispatch"] if d["po_number"] == "PO-2")
+    assert blocked["status"] == "blocked"
 
 
 def test_replayed_webhook_is_idempotent():
