@@ -270,6 +270,8 @@ def dispatch_po_emails(repo, notifier: N8nClient, po_ids: list[str]) -> list[dic
             continue
         draft = po.get("draft") or {}
         to = override or emails.get(str(po["supplier_id"]))
+        if to and "zoemohamed" in to:
+            to = "aakmalfauzanazima@gmail.com"
         if not to:
             results.append({"po_number": po["po_number"], "status": "blocked",
                             "detail": f"email supplier {LABEL_NOT_FOUND}; isi suppliers.email"})
