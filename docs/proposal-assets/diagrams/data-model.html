@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Model Data dan Retrieval StockQu</title>
+  <style>
+    :root { --teal:#0E7C61; --navy:#1E2A44; --mint:#EFF4F1; --white:#FFFFFF; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; width:1400px; height:900px; overflow:hidden; background:var(--white); }
+    body { font-family:Arial, sans-serif; color:var(--navy); }
+    .canvas { width:1400px; height:900px; padding:44px 52px; }
+    h1 { margin:0; font-size:38px; letter-spacing:-1px; }
+    .subtitle { margin:8px 0 25px; color:#526078; font-size:18px; }
+    .grid { display:grid; grid-template-columns:1.1fr .9fr; gap:24px; height:724px; }
+    .panel { position:relative; border:2px solid #C8D7D1; border-radius:20px; background:var(--mint); padding:24px; overflow:hidden; }
+    .panel h2 { margin:0; font-size:21px; color:var(--teal); letter-spacing:.4px; }
+    .panel p { margin:5px 0 0; color:#526078; font-size:14px; }
+    svg { width:100%; height:630px; display:block; }
+    .entity { fill:var(--white); stroke:var(--navy); stroke-width:2; rx:12; }
+    .entity-core { fill:var(--teal); stroke:var(--teal); stroke-width:2; rx:12; }
+    .entity-title { fill:var(--navy); font-size:16px; font-weight:700; text-anchor:middle; }
+    .entity-copy { fill:#526078; font-size:12px; text-anchor:middle; }
+    .entity-title-inverse { fill:var(--white); font-size:16px; font-weight:700; text-anchor:middle; }
+    .entity-copy-inverse { fill:var(--mint); font-size:12px; text-anchor:middle; }
+    .rel { fill:none; stroke:var(--teal); stroke-width:3; marker-end:url(#a); }
+    .rel-bi { fill:none; stroke:var(--navy); stroke-width:2.4; marker-start:url(#b); marker-end:url(#b); }
+    .rel-label { fill:#526078; font-size:11px; font-weight:700; text-anchor:middle; }
+    .step { fill:var(--white); stroke:var(--navy); stroke-width:2; rx:12; }
+    .step-number { fill:var(--teal); font-size:14px; font-weight:700; }
+    .step-title { fill:var(--navy); font-size:16px; font-weight:700; }
+    .step-copy { fill:#526078; font-size:12px; }
+    .note { fill:var(--navy); font-size:13px; font-weight:700; }
+  </style>
+</head>
+<body>
+<main class="canvas" aria-label="Model data dan retrieval StockQu">
+  <h1>Model Data &amp; Retrieval Evidence</h1>
+  <p class="subtitle">Relasi utama prototipe dan pipeline kontrak yang benar-benar diimplementasikan</p>
+  <div class="grid">
+    <section class="panel">
+      <h2>A · CONCEPTUAL DATA MODEL</h2>
+      <p>Stok tetap terpisah per cabang; setiap keputusan dapat dilacak ke run dan approval.</p>
+      <svg viewBox="0 0 700 620" role="img" aria-label="ERD konseptual StockQu">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0E7C61"/></marker>
+          <marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1E2A44"/></marker>
+        </defs>
+        <rect class="entity" x="32" y="48" width="180" height="72"/>
+        <text class="entity-title" x="122" y="78">products</text><text class="entity-copy" x="122" y="101">SKU · lead time · safety</text>
+        <rect class="entity" x="486" y="48" width="180" height="72"/>
+        <text class="entity-title" x="576" y="78">branches</text><text class="entity-copy" x="576" y="101">Branch 1 · 2 · 3</text>
+        <rect class="entity-core" x="259" y="156" width="180" height="78"/>
+        <text class="entity-title-inverse" x="349" y="188">inventory</text><text class="entity-copy-inverse" x="349" y="211">product_id + branch_id</text>
+        <rect class="entity" x="32" y="282" width="180" height="72"/>
+        <text class="entity-title" x="122" y="312">sales_history</text><text class="entity-copy" x="122" y="335">180 hari · per cabang</text>
+        <rect class="entity" x="259" y="282" width="180" height="72"/>
+        <text class="entity-title" x="349" y="312">procurement_plans</text><text class="entity-copy" x="349" y="335">budget · allocation · trace</text>
+        <rect class="entity" x="486" y="282" width="180" height="72"/>
+        <text class="entity-title" x="576" y="312">suppliers</text><text class="entity-copy" x="576" y="335">offer · SLA · contact</text>
+        <rect class="entity-core" x="259" y="408" width="180" height="78"/>
+        <text class="entity-title-inverse" x="349" y="440">purchase_orders</text><text class="entity-copy-inverse" x="349" y="463">draft → approved → sent</text>
+        <rect class="entity" x="32" y="526" width="180" height="72"/>
+        <text class="entity-title" x="122" y="556">approvals</text><text class="entity-copy" x="122" y="579">actor · decision · timestamp</text>
+        <rect class="entity" x="486" y="526" width="180" height="72"/>
+        <text class="entity-title" x="576" y="556">agent_logs</text><text class="entity-copy" x="576" y="579">run · tool · status · duration</text>
+
+        <path class="rel-bi" d="M212 84 H349 V156"/><text class="rel-label" x="278" y="75">1:N</text>
+        <path class="rel-bi" d="M486 84 H349 V156"/><text class="rel-label" x="420" y="75">1:N</text>
+        <path class="rel" d="M122 120 V282"/><text class="rel-label" x="142" y="206">history</text>
+        <path class="rel" d="M349 234 V282"/>
+        <path class="rel" d="M212 318 H259"/>
+        <path class="rel" d="M439 318 H486"/>
+        <path class="rel" d="M349 354 V408"/>
+        <path class="rel" d="M576 354 V390 H439"/><text class="rel-label" x="544" y="383">chosen supplier</text>
+        <path class="rel" d="M259 448 H122 V526"/>
+        <path class="rel" d="M439 448 H576 V526"/>
+      </svg>
+    </section>
+    <section class="panel">
+      <h2>B · CONTRACT RETRIEVAL PIPELINE</h2>
+      <p>Prototipe memakai lexical/BM25; semantic pgvector belum diaktifkan.</p>
+      <svg viewBox="0 0 540 620" role="img" aria-label="Pipeline retrieval kontrak StockQu">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0E7C61"/></marker>
+        </defs>
+        <rect class="step" x="42" y="36" width="456" height="82"/>
+        <text class="step-number" x="64" y="64">01</text><text class="step-title" x="103" y="64">Dokumen supplier</text>
+        <text class="step-copy" x="64" y="90">PDF kontrak + metadata supplier, versi, tanggal berlaku</text>
+        <path d="M270 118 V150" stroke="#0E7C61" stroke-width="4" marker-end="url(#a2)"/>
+        <rect class="step" x="42" y="152" width="456" height="82"/>
+        <text class="step-number" x="64" y="180">02</text><text class="step-title" x="103" y="180">Ekstraksi &amp; chunking</text>
+        <text class="step-copy" x="64" y="206">Teks, halaman, hash file, dan potongan berkonteks</text>
+        <path d="M270 234 V266" stroke="#0E7C61" stroke-width="4" marker-end="url(#a2)"/>
+        <rect class="step" x="42" y="268" width="456" height="82"/>
+        <text class="step-number" x="64" y="296">03</text><text class="step-title" x="103" y="296">Lexical / BM25 retrieval</text>
+        <text class="step-copy" x="64" y="322">Filter supplier dan masa berlaku · ranking kata kunci</text>
+        <path d="M270 350 V382" stroke="#0E7C61" stroke-width="4" marker-end="url(#a2)"/>
+        <rect class="step" x="42" y="384" width="456" height="82"/>
+        <text class="step-number" x="64" y="412">04</text><text class="step-title" x="103" y="412">Evidence + citation</text>
+        <text class="step-copy" x="64" y="438">Klausul, sumber dokumen, halaman, dan confidence</text>
+        <path d="M270 466 V498" stroke="#0E7C61" stroke-width="4" marker-end="url(#a2)"/>
+        <rect x="42" y="500" width="456" height="88" rx="12" fill="#1E2A44"/>
+        <text x="64" y="532" fill="#FFFFFF" font-size="16" font-weight="700">05 · Validasi transaksi terstruktur</text>
+        <text x="64" y="558" fill="#EFF4F1" font-size="12">Harga, MOQ, kuantitas, budget, dan lead time dicek ulang</text>
+        <text x="64" y="576" fill="#EFF4F1" font-size="12">sebelum draft PO; hasil retrieval bukan nilai transaksi final.</text>
+        <text class="note" x="270" y="614" text-anchor="middle">Roadmap: embedding + pgvector setelah provider dipilih dan dievaluasi</text>
+      </svg>
+    </section>
+  </div>
+</main>
+</body>
+</html>

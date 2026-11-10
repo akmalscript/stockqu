@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Tim Suddenly — Universitas Diponegoro">
+  <meta name="description" content="Proposal StockQu untuk GTNIC 2026 kategori AI Agent Development">
+  <title>StockQu — Proposal GTNIC 2026</title>
+  <style>
+    :root {
+      --teal:#0E7C61;
+      --navy:#1E2A44;
+      --mint:#EFF4F1;
+      --white:#FFFFFF;
+      --ink:#29354D;
+      --muted:#68748A;
+      --line:#CBD7D2;
+    }
+    @page { size:A4; margin:0; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; padding:0; background:#DCE5E1; color:var(--ink); font-family:Arial, sans-serif; }
+    body { counter-reset:page; }
+    .page {
+      position:relative;
+      width:210mm;
+      height:297mm;
+      margin:0 auto;
+      padding:15mm 17mm 16mm;
+      background:var(--white);
+      page-break-after:always;
+      overflow:hidden;
+      counter-increment:page;
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    .page:last-child { page-break-after:auto; }
+    .page-header { display:flex; justify-content:space-between; align-items:center; padding-bottom:3.2mm; margin-bottom:5mm; border-bottom:.55mm solid var(--teal); }
+    .page-header .brand { font-size:9pt; font-weight:800; letter-spacing:.9pt; color:var(--navy); }
+    .page-header .section { font-size:7.6pt; font-weight:700; color:var(--teal); letter-spacing:.4pt; text-transform:uppercase; }
+    .footer { position:absolute; left:17mm; right:17mm; bottom:7mm; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:7.4pt; }
+    .footer strong { color:var(--navy); }
+    .page-num::after { content:"Halaman " counter(page) " / 15"; }
+    h1, h2, h3 { color:var(--navy); margin:0; }
+    h1 { font-size:22pt; line-height:1.06; letter-spacing:-.45pt; margin-bottom:4.2mm; }
+    h2 { font-size:15pt; line-height:1.15; margin:4.8mm 0 2.2mm; }
+    h3 { font-size:10.5pt; line-height:1.2; margin:3.5mm 0 1.6mm; }
+    p, li, td, th { font-size:9.15pt; line-height:1.46; }
+    p { margin:0 0 2.5mm; }
+    ul { margin:1.5mm 0 3mm; padding-left:5.5mm; }
+    li { margin:0 0 1.3mm; padding-left:1mm; }
+    li::marker { color:var(--teal); }
+    .lead { font-size:11pt; line-height:1.5; color:var(--navy); }
+    .eyebrow { color:var(--teal); font-size:8pt; font-weight:800; letter-spacing:1pt; text-transform:uppercase; margin-bottom:2mm; }
+    .muted { color:var(--muted); }
+    .tiny { font-size:7.3pt; line-height:1.35; }
+    .accent { color:var(--teal); }
+    .strong { font-weight:700; color:var(--navy); }
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:5mm; }
+    .two-col.wide-left { grid-template-columns:1.12fr .88fr; }
+    .three-col { display:grid; grid-template-columns:repeat(3,1fr); gap:3mm; }
+    .card { border:.35mm solid var(--line); border-radius:3mm; padding:3.4mm; background:var(--white); }
+    .card.mint { background:var(--mint); border-color:var(--mint); }
+    .card.dark { background:var(--navy); color:var(--white); border-color:var(--navy); }
+    .card.dark h3, .card.dark strong { color:var(--white); }
+    .card.teal { background:var(--teal); color:var(--white); border-color:var(--teal); }
+    .card.teal h3, .card.teal strong { color:var(--white); }
+    .callout { border-left:1.2mm solid var(--teal); background:var(--mint); padding:3mm 3.5mm; margin:3mm 0; }
+    .simulation { display:flex; gap:2.2mm; align-items:center; padding:2.2mm 3mm; margin:2.2mm 0 3.2mm; border:.35mm solid var(--teal); border-radius:2mm; color:var(--teal); font-size:7.8pt; font-weight:800; letter-spacing:.25pt; }
+    .simulation::before { content:"SIMULASI"; background:var(--teal); color:var(--white); border-radius:1.2mm; padding:1mm 1.6mm; font-size:6.7pt; }
+    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:2.5mm; margin:3mm 0; }
+    .kpi { border-top:1.1mm solid var(--teal); background:var(--mint); padding:3mm; min-height:23mm; }
+    .kpi .value { color:var(--navy); font-size:17pt; font-weight:800; letter-spacing:-.3pt; }
+    .kpi .label { font-size:7.2pt; line-height:1.3; color:var(--muted); margin-top:1mm; }
+    table { width:100%; border-collapse:separate; border-spacing:0; margin:2.2mm 0 3mm; border:.3mm solid var(--line); border-radius:2mm; overflow:hidden; }
+    th { background:var(--navy); color:var(--white); text-align:left; padding:2.2mm 2.5mm; font-size:7.6pt; }
+    td { padding:2mm 2.5mm; border-top:.25mm solid var(--line); vertical-align:top; font-size:7.7pt; line-height:1.35; }
+    tr:nth-child(even) td { background:var(--mint); }
+    .feature-list { display:grid; grid-template-columns:1fr 1fr; gap:2.8mm; margin-top:3mm; }
+    .feature { min-height:30mm; border:.3mm solid var(--line); border-radius:2.5mm; padding:3mm; }
+    .feature .num { display:inline-grid; place-items:center; width:7mm; height:7mm; border-radius:50%; background:var(--teal); color:var(--white); font-size:7pt; font-weight:800; margin-right:1.7mm; }
+    .feature strong { color:var(--navy); font-size:9.3pt; }
+    .feature p { margin:1.6mm 0 0; font-size:7.7pt; line-height:1.38; }
+    .diagram { width:100%; border:.35mm solid var(--line); border-radius:2.5mm; display:block; margin:3mm 0 2mm; }
+    figure { margin:0; }
+    figcaption { font-size:7.2pt; line-height:1.35; color:var(--muted); margin-top:1.5mm; }
+    .shot { width:100%; height:92mm; object-fit:cover; object-position:top left; display:block; border:.35mm solid var(--line); border-radius:2.5mm; }
+    .shot.short { height:91mm; }
+    .shot-card { margin-bottom:4mm; }
+    .shot-card h3 { display:flex; align-items:center; gap:2mm; margin:0 0 1.8mm; }
+    .shot-card h3 span { display:inline-grid; place-items:center; width:7mm; height:7mm; border-radius:1.5mm; background:var(--teal); color:var(--white); font-size:7pt; }
+    .evidence { display:flex; justify-content:space-between; align-items:flex-start; gap:4mm; padding:2.2mm 0; border-top:.25mm solid var(--line); }
+    .evidence:first-child { border-top:0; }
+    .evidence .status { flex:0 0 auto; background:var(--mint); color:var(--teal); padding:1mm 1.7mm; border-radius:4mm; font-size:6.8pt; font-weight:800; }
+    .status.pending { color:var(--navy); }
+    .link { color:var(--teal); text-decoration:none; word-break:break-all; }
+    .cover { padding:0; background:var(--navy); color:var(--white); }
+    .cover .mint-block { position:absolute; width:118mm; height:118mm; right:-32mm; top:-38mm; border-radius:50%; background:var(--mint); opacity:.12; }
+    .cover .teal-block { position:absolute; width:96mm; height:96mm; left:-33mm; bottom:-35mm; border-radius:50%; background:var(--teal); }
+    .cover .content { position:absolute; inset:0; padding:20mm 19mm 18mm; display:flex; flex-direction:column; z-index:2; }
+    .cover .top { display:flex; justify-content:space-between; align-items:flex-start; }
+    .cover .competition { font-size:8pt; line-height:1.45; text-transform:uppercase; letter-spacing:.8pt; color:var(--mint); max-width:94mm; }
+    .cover .logo-wrap { width:48mm; height:21mm; background:var(--white); border-radius:2.5mm; display:grid; place-items:center; padding:2mm; }
+    .cover .logo-wrap img { max-width:100%; max-height:100%; }
+    .cover .hero { margin-top:38mm; max-width:165mm; }
+    .cover h1 { color:var(--white); font-size:50pt; letter-spacing:-2.2pt; line-height:.9; margin-bottom:6mm; }
+    .cover .tagline { font-size:18pt; line-height:1.25; color:var(--mint); max-width:145mm; }
+    .cover .pill { display:inline-block; margin-bottom:7mm; padding:2mm 3mm; border:1px solid var(--teal); color:var(--white); background:var(--teal); border-radius:8mm; font-size:8pt; font-weight:800; letter-spacing:.8pt; }
+    .cover .team { margin-top:auto; display:grid; grid-template-columns:42mm 1fr; gap:7mm; align-items:end; }
+    .cover .team-label { font-size:8pt; color:var(--mint); text-transform:uppercase; letter-spacing:.8pt; }
+    .cover .team-name { font-size:21pt; font-weight:800; margin-top:1mm; }
+    .cover .members { border-left:.7mm solid var(--teal); padding-left:5mm; font-size:9pt; line-height:1.72; }
+    .cover .cover-footer { position:absolute; bottom:7mm; right:19mm; font-size:7pt; color:var(--mint); }
+    .flow-row { display:flex; align-items:center; gap:1.3mm; margin:3mm 0; }
+    .flow-step { flex:1; border:.3mm solid var(--line); border-radius:2mm; padding:2.5mm; text-align:center; font-size:7.3pt; font-weight:700; color:var(--navy); }
+    .flow-step.active { background:var(--teal); color:var(--white); border-color:var(--teal); }
+    .arrow { color:var(--teal); font-weight:800; }
+    .checklist { columns:2; column-gap:7mm; }
+    .checklist li { break-inside:avoid; }
+    @media print { html, body { background:var(--white); } .page { margin:0; } }
+  </style>
+</head>
+<body>
+
+<section class="page cover">
+  <div class="mint-block"></div><div class="teal-block"></div>
+  <div class="content">
+    <div class="top">
+      <div class="competition">Proposal Karya · Agentic Development<br>Garda Tech National Innovation Competition 2026<br><strong>Kategori: AI Agent Development</strong></div>
+      <div class="logo-wrap"><img src="../proposal-assets/gtnic-000.png" alt="Logo GTNIC"></div>
+    </div>
+    <div class="hero">
+      <span class="pill">BUILDING INTELLIGENT AI AGENTS FOR ENTERPRISE PRODUCTIVITY</span>
+      <h1>STOCKQU</h1>
+      <div class="tagline">Multi-Agent Procurement System untuk keputusan stok yang lebih cepat, terukur, dan dapat diaudit.</div>
+    </div>
+    <div class="team">
+      <div><div class="team-label">Disusun oleh tim</div><div class="team-name">Suddenly</div></div>
+      <div class="members">Bramantyo Kunni Nurrisqi — Universitas Diponegoro<br>Akmal Fauzan Azima — Universitas Diponegoro<br>Zoe Mohamed — Universitas Diponegoro</div>
+    </div>
+  </div>
+  <div class="cover-footer">STOCKQU · PROPOSAL GTNIC 2026</div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">01 · Latar Belakang</span></div>
+  <div class="eyebrow">Masalah industri</div>
+  <h1>Dari data stok yang tersebar<br>menjadi keputusan pengadaan</h1>
+  <p class="lead">Pengelolaan persediaan multi-gudang bukan sekadar melihat jumlah stok. Tim harus menentukan kapan membeli, berapa unit, cabang mana yang diprioritaskan, dan supplier mana yang layak—di tengah permintaan yang berubah, anggaran terbatas, serta lead time berbeda.</p>
+  <div class="callout"><strong>Masalah inti:</strong> data stok, histori penjualan, penawaran, kontrak, dan approval berada pada kanal berbeda. Fragmentasi ini memperlambat tindakan dan menyulitkan audit keputusan.</div>
+  <h2>1.1 Konteks operasional</h2>
+  <p>Dalam skenario StockQu, Google Sheets menjadi sumber stok bersama, Supabase menyimpan data operasional dan audit, sementara evaluasi supplier serta persetujuan PO melibatkan kanal komunikasi terpisah. Tanpa orkestrasi, tim berisiko terlambat mendeteksi stockout, mengikat modal pada overstock, atau memilih supplier tanpa menilai bukti kontrak dan ketepatan pengiriman.</p>
+  <h2>1.2 Rumusan masalah</h2>
+  <div class="feature-list">
+    <div class="feature"><span class="num">01</span><strong>Risiko terlambat terlihat</strong><p>Ambang statis tidak cukup untuk menghubungkan tren permintaan, stok per cabang, dan jadwal kedatangan.</p></div>
+    <div class="feature"><span class="num">02</span><strong>Budget perlu diprioritaskan</strong><p>Ketika dana tidak cukup untuk semua SKU, keputusan harus mempertimbangkan urgensi dan dampak bisnis.</p></div>
+    <div class="feature"><span class="num">03</span><strong>Bukti supplier tersebar</strong><p>Harga, MOQ, lead time, serta klausul kontrak perlu dibandingkan secara konsisten dan terlacak.</p></div>
+    <div class="feature"><span class="num">04</span><strong>Keputusan sulit diaudit</strong><p>Tanpa Reasoning Trace dan Execution Trace, sumber angka, validasi, error, dan approval sulit diperiksa.</p></div>
+  </div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">Baseline · Tujuan · Manfaat</span></div>
+  <div class="eyebrow">Baseline tervalidasi pada prototipe</div>
+  <h1>Ruang uji yang terukur,<br>bukan klaim operasional nyata</h1>
+  <div class="simulation">CONTOH SIMULASI — BUKAN DATA REAL</div>
+  <div class="kpis">
+    <div class="kpi"><div class="value">3</div><div class="label">cabang terpisah: Branch 1, Branch 2, Branch 3</div></div>
+    <div class="kpi"><div class="value">50</div><div class="label">SKU sintetis pada dataset demonstrasi</div></div>
+    <div class="kpi"><div class="value">150</div><div class="label">kombinasi SKU–cabang yang dianalisis</div></div>
+    <div class="kpi"><div class="value">180</div><div class="label">hari histori penjualan per kombinasi</div></div>
+  </div>
+  <p class="tiny muted">Sumber: Supabase prototipe, run Analyst <strong>ANL-20261109-062039-405FB2</strong>, diakses 10 November 2026. Data seed diberi label simulasi.</p>
+  <div class="two-col wide-left">
+    <div>
+      <h2>2.1 Tujuan pengembangan</h2>
+      <ul>
+        <li><strong>Prediksi:</strong> mendeteksi risiko habis per SKU dan cabang dari histori enam bulan, stok saat ini, dan ketidakpastian forecast.</li>
+        <li><strong>Optimasi:</strong> menyusun rencana pembelian yang patuh budget Rp50 juta, MOQ, lead time, serta prioritas risiko.</li>
+        <li><strong>Eksekusi:</strong> membandingkan minimal tiga supplier, menyiapkan draft PO, dan menunggu approval manusia.</li>
+        <li><strong>Transparansi:</strong> menyajikan sumber angka, formula, status tool, fallback, dan perubahan state.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>2.2 Validasi masalah</h2>
+      <div class="card mint"><h3>Hasil run demonstrasi</h3><p><strong>5</strong> kombinasi SKU–cabang terdeteksi berisiko dalam horizon ≤7 hari; <strong>2</strong> di antaranya berstatus urgent (≤4 hari).</p></div>
+      <div class="card" style="margin-top:3mm"><h3>Yang belum diukur</h3><p>Baseline waktu kerja manual, kerugian penjualan, dan dampak sebelum–sesudah pada perusahaan nyata <strong>belum tersedia</strong>; karena itu tidak dijadikan klaim hasil.</p></div>
+    </div>
+  </div>
+  <h2>2.3 Manfaat yang diharapkan</h2>
+  <p>Procurement Manager memperoleh rencana yang dapat ditinjau; Purchasing Staff mengurangi konsolidasi manual; Warehouse Manager melihat stok dan incoming per cabang; organisasi memperoleh keputusan yang konsisten dan berjejak audit. Manfaat bisnis tetap diposisikan sebagai hipotesis sampai pilot operasional dilakukan.</p>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">02 · Solusi &amp; Pengguna</span></div>
+  <div class="eyebrow">Solusi teknologi</div>
+  <h1>Tiga agent, satu jalur keputusan,<br>satu gerbang persetujuan</h1>
+  <p class="lead">StockQu menggabungkan Analyst, Purchaser, dan Negotiator dalam workflow LangGraph. Perhitungan finansial dan stok dijalankan oleh tool Python yang tervalidasi; tindakan eksternal tetap dikunci oleh human-in-the-loop.</p>
+  <div class="flow-row">
+    <div class="flow-step active">ANALYST<br><span class="tiny">risiko stok</span></div><span class="arrow">→</span>
+    <div class="flow-step">PURCHASER<br><span class="tiny">alokasi budget</span></div><span class="arrow">→</span>
+    <div class="flow-step">NEGOTIATOR<br><span class="tiny">supplier &amp; draft PO</span></div><span class="arrow">→</span>
+    <div class="flow-step">MANAGER<br><span class="tiny">OK / reject / revisi</span></div>
+  </div>
+  <div class="two-col">
+    <div>
+      <h2>2.4 Prinsip solusi</h2>
+      <div class="card mint"><h3>Agentic, tetapi terkontrol</h3><p>State machine memilih langkah berikutnya, tool menghasilkan output terstruktur, validator menegakkan constraint, dan setiap hasil dapat direplay.</p></div>
+      <div class="card" style="margin-top:3mm"><h3>Evidence-grounded</h3><p>Angka keputusan berasal dari Sheets, Supabase, hasil Analyst, atau kontrak supplier. Retrieval kontrak saat ini memakai lexical/BM25 dengan citation; semantic pgvector masih roadmap.</p></div>
+      <div class="card" style="margin-top:3mm"><h3>Human-governed</h3><p>Tanpa keputusan approval yang valid, PO tidak dikirim melalui email dan incoming inventory tidak diproses.</p></div>
+    </div>
+    <div>
+      <h2>3. Target pengguna</h2>
+      <table>
+        <tr><th>Peran</th><th>Kebutuhan utama</th></tr>
+        <tr><td><strong>Procurement Manager</strong></td><td>Menilai risiko, budget, bukti supplier, lalu approve, reject, atau meminta revisi.</td></tr>
+        <tr><td><strong>Purchasing Staff</strong></td><td>Meninjau prioritas SKU, hasil optimasi, perbandingan supplier, dan draft PO.</td></tr>
+        <tr><td><strong>Warehouse Manager</strong></td><td>Memantau stok serta incoming per cabang dan mengonfirmasi penerimaan.</td></tr>
+        <tr><td><strong>Super Admin</strong></td><td>Mengelola master data, hak akses, integrasi, dan audit log.</td></tr>
+      </table>
+      <h3>Target pasar awal</h3>
+      <p>Distributor, grosir, atau ritel kecil–menengah dengan beberapa gudang dan pola pembelian berulang. Demonstrasi dibatasi pada tiga cabang gudang di Jawa Tengah; belum ada klaim implementasi komersial pada perusahaan nyata.</p>
+    </div>
+  </div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">04 · Fitur &amp; Keunikan</span></div>
+  <div class="eyebrow">Fitur utama · F-01–F-35</div>
+  <h1>Bukan dashboard pasif—<br>sebuah procurement decision loop</h1>
+  <div class="feature-list">
+    <div class="feature"><span class="num">01</span><strong>Inventory intelligence</strong><p>Sinkronisasi Google Sheets–Supabase, stok terpisah pada tiga cabang, incoming inventory, dan histori penjualan enam bulan.</p></div>
+    <div class="feature"><span class="num">02</span><strong>Analyst</strong><p>Forecast tren × musiman, backtest holdout 14 hari, days-to-stockout, safety stock, restock, serta rentang ketidakpastian.</p></div>
+    <div class="feature"><span class="num">03</span><strong>Purchaser</strong><p>Prioritas risiko, budget tracking, optimasi MILP PuLP/CBC, MOQ, serta greedy fallback yang tercatat bila solver tidak tersedia.</p></div>
+    <div class="feature"><span class="num">04</span><strong>Negotiator</strong><p>Minimal tiga supplier per item, lexical/BM25 contract retrieval dengan citation, validasi quotation, ranking, dan draft PO.</p></div>
+    <div class="feature"><span class="num">05</span><strong>Orkestrasi &amp; observability</strong><p>LangGraph state, persistent checkpoint, retry/fallback, Reasoning Trace, Execution Trace, dan audit log tanpa memaparkan chain-of-thought.</p></div>
+    <div class="feature"><span class="num">06</span><strong>Controlled execution</strong><p>Approval WhatsApp/dashboard, email PO melalui n8n/Gmail, incoming inventory, serta ekspor PDF/Excel setelah syarat terpenuhi.</p></div>
+  </div>
+  <h2>4.2 Nilai inovasi</h2>
+  <div class="three-col">
+    <div class="card teal"><h3>Agent-first</h3><p>Menghubungkan deteksi, alokasi, supplier, dan draft transaksi—bukan hanya memvisualkan data.</p></div>
+    <div class="card dark"><h3>Replanning</h3><p>Constraint yang tidak terpenuhi dapat mengembalikan proses ke alokasi dan validasi ulang.</p></div>
+    <div class="card mint"><h3>Auditable</h3><p>Run ID, tool, sumber angka, durasi, status, dan keputusan manusia tersimpan sebagai evidence.</p></div>
+  </div>
+  <h2>4.3 Guardrail keputusan</h2>
+  <table>
+    <tr><th>Risiko</th><th>Kontrol StockQu</th><th>Tindakan terlarang</th></tr>
+    <tr><td>Budget berlebih</td><td>Recheck budget pada plan dan draft PO</td><td>Menerbitkan total di atas sisa budget</td></tr>
+    <tr><td>Stok lintas cabang tercampur</td><td>Key inventory = product_id + branch_id</td><td>Menjumlahkan stok sebagai satu gudang</td></tr>
+    <tr><td>Supplier tidak terverifikasi</td><td>≥3 offer + bukti kontrak + validator</td><td>Menganggap retrieval sebagai harga final</td></tr>
+    <tr><td>Eksekusi tanpa izin</td><td>Approval valid + idempotency</td><td>Mengirim PO atau menambah stok tanpa OK</td></tr>
+  </table>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">Demo &amp; Stack Teknologi</span></div>
+  <div class="eyebrow">4.4 Skenario demonstrasi</div>
+  <h1>Dari risiko stockout<br>menjadi dua draft PO</h1>
+  <div class="simulation">CONTOH SIMULASI — BUKAN DATA REAL</div>
+  <div class="kpis">
+    <div class="kpi"><div class="value">5</div><div class="label">SKU–cabang berisiko dari 150 kombinasi</div></div>
+    <div class="kpi"><div class="value">Rp3,434 jt</div><div class="label">rencana Purchaser dari budget tersedia Rp12 jt</div></div>
+    <div class="kpi"><div class="value">3 / item</div><div class="label">supplier dibandingkan untuk setiap SKU risiko</div></div>
+    <div class="kpi"><div class="value">Rp3,384 jt</div><div class="label">total dua draft PO; belum dikirim</div></div>
+  </div>
+  <p>Run Analyst <strong>ANL-20261109-062039-405FB2</strong> menemukan lima risiko. Run Purchaser <strong>PUR-20261109-062106-3423AA</strong> menghasilkan plan feasible dengan solver MILP/CBC. Run Negotiator <strong>NEG-20261109-062122-553160</strong> memilih offer tervalidasi dan membuat dua draft PO. Pada snapshot proposal, approval request belum tersedia; status PO tetap <strong>draft</strong> dan email belum dikirim.</p>
+  <h2>5.1 Stack teknologi yang diimplementasikan</h2>
+  <table>
+    <tr><th style="width:27%">Lapisan</th><th>Teknologi &amp; fungsi aktual</th></tr>
+    <tr><td>Antarmuka</td><td><strong>Streamlit</strong> — 11 halaman operasional, role-based access, trace, analitik, dan export.</td></tr>
+    <tr><td>Agent service</td><td><strong>FastAPI 0.4.0</strong> — job, webhook, callback, rate/admission control, dan worker independen.</td></tr>
+    <tr><td>Orkestrasi</td><td><strong>LangGraph</strong> — Analyst, Purchaser, Negotiator, branching, checkpoint, dan HITL. Prototipe saat ini tidak mengonfigurasi provider LLM eksternal; keputusan finansial tetap deterministik.</td></tr>
+    <tr><td>Data</td><td><strong>Supabase PostgreSQL</strong> — Auth, RLS, inventori, transaksi, run, dan audit; Google Sheets untuk sumber stok bersama.</td></tr>
+    <tr><td>Forecast &amp; optimasi</td><td><strong>Python</strong> — linear trend × weekly seasonality, backtest 14 hari; <strong>PuLP 3.3.0 + CBC</strong> untuk MILP.</td></tr>
+    <tr><td>Retrieval</td><td>Ekstraksi dokumen dan <strong>lexical/BM25</strong> dengan citation. pgvector/embedding belum diaktifkan.</td></tr>
+    <tr><td>Integrasi</td><td><strong>n8n</strong> W1–W5, Gmail, Twilio WhatsApp Sandbox, Google Sheets, dan cron 07:00 WIB.</td></tr>
+    <tr><td>Dokumen</td><td><strong>fpdf2, pypdf, XlsxWriter</strong> untuk draft PO, matriks supplier, dan laporan.</td></tr>
+  </table>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">05 · Arsitektur Sistem</span></div>
+  <div class="eyebrow">5.2 Multi-agent architecture</div>
+  <h1>Alur terpisah, state bersama,<br>eksekusi tetap terkunci</h1>
+  <p>Streamlit meminta eksekusi ke FastAPI Agent Service. LangGraph meneruskan state ke tiga agent; setiap agent memanggil tool terstruktur dan menyimpan trace. Supabase menjadi sumber state dan audit, Google Sheets menjadi kanal stok bersama, sedangkan n8n menangani scheduler dan komunikasi eksternal.</p>
+  <figure>
+    <img class="diagram" src="../proposal-assets/diagrams/architecture.png" alt="Diagram arsitektur StockQu dari Streamlit hingga n8n">
+    <figcaption><strong>Gambar 1.</strong> Arsitektur sistem StockQu. Garis putus-putus menandai feedback/event; tindakan eksternal hanya berjalan setelah approval valid.</figcaption>
+  </figure>
+  <div class="two-col">
+    <div class="card mint"><h3>Conditional workflow</h3><p>Data kurang → fallback tercatat. Plan melanggar budget → hitung ulang. Offer tidak feasible → replan. Approval belum ada → workflow berhenti pada draft.</p></div>
+    <div class="card"><h3>Deployment boundary</h3><p>UI hanya memakai anon/JWT user sesuai RLS. Service role, token n8n, kredensial Sheets, dan callback tetap berada di sisi server.</p></div>
+  </div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">Database &amp; Retrieval</span></div>
+  <div class="eyebrow">5.3 Data model</div>
+  <h1>Stok per cabang,<br>evidence per keputusan</h1>
+  <p>Relasi inti menjaga stok pada key SKU–cabang, menghubungkan histori ke plan, supplier ke PO, serta PO ke approval dan agent log. Dokumen kontrak diproses sebagai evidence; angka transaksi tetap diverifikasi pada tabel terstruktur.</p>
+  <figure>
+    <img class="diagram" src="../proposal-assets/diagrams/data-model.png" alt="Diagram model data dan pipeline retrieval kontrak StockQu">
+    <figcaption><strong>Gambar 2.</strong> Model data konseptual dan pipeline retrieval yang aktual. Diagram sengaja tidak mengklaim pgvector aktif; semantic retrieval menjadi roadmap setelah provider embedding dipilih dan diuji.</figcaption>
+  </figure>
+  <div class="callout tiny"><strong>Aturan traceability:</strong> setiap angka pada Reasoning Trace harus dapat ditelusuri ke Google Sheets, Supabase, hasil Analyst, atau kontrak supplier. Jika bukti tidak tersedia, UI menampilkan <strong>DATA TIDAK DITEMUKAN</strong>.</div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">Logika Agent &amp; Observability</span></div>
+  <div class="eyebrow">5.4 Decision logic</div>
+  <h1>Agent menjelaskan keputusan;<br>validator menjaga kebenaran angka</h1>
+  <div class="three-col">
+    <div class="card mint"><h3>01 · Analyst</h3><p><strong>avg harian</strong> = penjualan 180 hari / 180.<br><strong>days-to-stockout</strong> = stok / avg harian.<br><strong>restock</strong> = demand × (lead time + safety) − stok.</p></div>
+    <div class="card"><h3>02 · Purchaser</h3><p>MILP mengalokasikan kuantitas di bawah sisa budget Rp50 juta, MOQ, dan prioritas risiko. Greedy fallback hanya dipakai bila solver gagal dan selalu dicatat.</p></div>
+    <div class="card dark"><h3>03 · Negotiator</h3><p>Membandingkan minimal tiga offer, mengambil evidence kontrak, menilai harga/lead time, lalu membuat draft PO dan recheck budget.</p></div>
+  </div>
+  <h2>5.5 Tool calling dan error recovery</h2>
+  <table>
+    <tr><th>Tahap</th><th>Tool utama</th><th>Validasi / recovery</th></tr>
+    <tr><td>Analyst</td><td>baca inventory, sales history, forecasting</td><td>180 hari; per cabang; baseline mean bila tren tidak lebih baik</td></tr>
+    <tr><td>Purchaser</td><td>baca forecast, budget, optimize procurement</td><td>budget recheck; timeout; greedy fallback yang auditable</td></tr>
+    <tr><td>Negotiator</td><td>supplier search, contract retrieval, draft PO</td><td>≥3 supplier; citation; MOQ/price/lead-time; PO validator</td></tr>
+    <tr><td>Execution</td><td>approval request, email PO, incoming sync</td><td>auth actor; idempotency; signature/webhook; no approval = stop</td></tr>
+  </table>
+  <h2>5.6 Trace yang ditampilkan</h2>
+  <div class="two-col">
+    <div class="card teal"><h3>Reasoning Trace</h3><p>Input terverifikasi, formula, sumber, constraint, alternatif, dan alasan keputusan—tanpa memaparkan chain-of-thought tersembunyi.</p></div>
+    <div class="card mint"><h3>Execution Trace</h3><p>Run ID, agent, tool, parameter aman, status, percobaan, durasi, ringkasan output, serta retry/fallback.</p></div>
+  </div>
+  <h3>State dan kegagalan</h3>
+  <p>Checkpoint PostgreSQL memungkinkan proses dilanjutkan setelah event approval. Kegagalan provider yang aman dapat di-retry terbatas; error non-retryable berhenti dengan pesan eksplisit. Pengiriman PO dan keputusan approval dirancang idempotent agar webhook atau retry tidak membuat transaksi ganda.</p>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">HITL &amp; Evaluasi</span></div>
+  <div class="eyebrow">5.7 Human-in-the-loop</div>
+  <h1>Approval bukan formalitas—<br>ia adalah batas transaksi</h1>
+  <p>n8n menjalankan cron, WhatsApp Sandbox, Gmail, dan sinkron incoming; LangGraph tetap memegang state keputusan. Backend memverifikasi actor, approval code, status, dan idempotency. Balasan “OK” tanpa identitas dan konteks yang valid tidak cukup untuk mengeksekusi PO.</p>
+  <div class="flow-row">
+    <div class="flow-step">DRAFT PO</div><span class="arrow">→</span><div class="flow-step">WA / DASHBOARD</div><span class="arrow">→</span><div class="flow-step active">APPROVAL VALID</div><span class="arrow">→</span><div class="flow-step">EMAIL + INCOMING</div>
+  </div>
+  <div class="simulation">HASIL BACKTEST DAN RUN PROTOTIPE — BUKAN HASIL OPERASI PERUSAHAAN</div>
+  <h2>5.8 Hasil evaluasi yang tersedia</h2>
+  <table>
+    <tr><th>Metrik</th><th>Hasil</th><th>Basis &amp; sampel</th></tr>
+    <tr><td>Forecast accuracy</td><td><strong>MAPE median 7,9%</strong>; baseline 10,0%</td><td>Backtest holdout 14 hari; 150 SKU–cabang pada run Analyst terbaru</td></tr>
+    <tr><td>Stockout-risk detection</td><td><strong>5 risiko, 2 urgent</strong></td><td>Aturan ≤7 hari dan ≤4 hari; belum dibandingkan dengan label kasus nyata</td></tr>
+    <tr><td>Budget feasibility</td><td><strong>1/1 plan demo feasible</strong></td><td>Plan Rp3,434 juta; budget total Rp50 juta; tersedia pra-plan Rp12 juta</td></tr>
+    <tr><td>Supplier &amp; draft PO</td><td><strong>5 item, 3 offer/item, 2 draft PO</strong></td><td>Run Negotiator selesai; total draft Rp3,384 juta</td></tr>
+    <tr><td>Tool success &amp; recovery</td><td><strong>100% tertangani</strong></td><td>32 tool call: 30 success, 2 fallback, 0 failure pada log tersimpan</td></tr>
+    <tr><td>Approval &amp; PO sent</td><td><strong>Belum terukur pada snapshot</strong></td><td>0 approval request; 2 PO masih draft; tidak diklaim selesai</td></tr>
+  </table>
+  <div class="two-col">
+    <div class="card mint"><h3>Formula evaluasi</h3><p>MAPE dihitung per seri pada holdout, lalu diringkas dengan median untuk 150 SKU–cabang. Tool handled rate = (success + retried + fallback + skipped) / tool call. Feasibility = plan yang memenuhi seluruh constraint / plan diuji.</p></div>
+    <div class="card"><h3>Yang masih perlu pilot</h3><p>Procurement cycle time vs manual, approval latency, lost margin avoided, waktu kerja dihemat, serta pengurangan stockout/dead stock pada data nyata.</p></div>
+  </div>
+  <p class="tiny muted">Snapshot bukti: Supabase prototipe, 10 November 2026. Pengukuran menghormati pemisahan stok per cabang.</p>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">06 · Batasan Sistem</span></div>
+  <div class="eyebrow">Batas implementasi</div>
+  <h1>Prototipe yang jujur<br>lebih dapat diuji</h1>
+  <p class="lead">StockQu belum diposisikan sebagai ERP produksi. Ruang demonstrasi dibatasi pada tiga cabang, data sintetis enam bulan, budget bulanan, supplier yang tersedia, approval manusia, dan draft PO.</p>
+  <div class="feature-list">
+    <div class="feature"><span class="num">01</span><strong>Data sintetis</strong><p>Belum ada validasi pada pola penjualan perusahaan nyata. SKU baru, data jarang, atau demand berubah mendadak dapat menurunkan akurasi.</p></div>
+    <div class="feature"><span class="num">02</span><strong>Retrieval lexical</strong><p>Semantic pgvector dan embedding belum aktif. Bukti kontrak dicari via lexical/BM25 dan selalu diverifikasi terhadap data terstruktur.</p></div>
+    <div class="feature"><span class="num">03</span><strong>Supplier terbatas</strong><p>Tidak semua supplier menyediakan API atau quotation terbaru. Informasi yang belum terverifikasi tidak diperlakukan sebagai harga final.</p></div>
+    <div class="feature"><span class="num">04</span><strong>WhatsApp Sandbox</strong><p>Nomor penguji harus terdaftar dan tunduk pada Twilio. Dashboard terautentikasi tetap menjadi jalur approval utama/fallback.</p></div>
+    <div class="feature"><span class="num">05</span><strong>Deployment publik</strong><p>Live Streamlit dan backend persisten belum dicantumkan karena URL publik final belum tersedia di repository.</p></div>
+    <div class="feature"><span class="num">06</span><strong>Batas otomasi</strong><p>Agent tidak membayar supplier dan tidak menambah on-hand stock dari approval. Stok fisik berubah setelah goods receipt diverifikasi.</p></div>
+  </div>
+  <h2>Mitigasi desain</h2>
+  <table>
+    <tr><th>Batasan</th><th>Mitigasi saat ini</th><th>Langkah berikutnya</th></tr>
+    <tr><td>Akurasi forecast</td><td>Backtest per SKU–cabang; baseline fallback; uncertainty range</td><td>Pilot dengan data berizin dan rolling evaluation</td></tr>
+    <tr><td>Keamanan transaksi</td><td>RLS, role, server secrets, approval, idempotency, audit log</td><td>Secret manager, rotation, staging, dan pen-test deployment</td></tr>
+    <tr><td>Ketersediaan integrasi</td><td>Retry terbatas, fallback, dan status eksplisit</td><td>Queue, monitoring, alerting, serta SLA konektor</td></tr>
+    <tr><td>Dampak bisnis</td><td>Tidak mengklaim hasil yang belum diukur</td><td>Studi sebelum–sesudah dengan baseline sebanding</td></tr>
+  </table>
+  <div class="callout"><strong>Status submission:</strong> seluruh screenshot berikut berasal dari aplikasi yang dijalankan terhadap Supabase prototipe. Data ditandai simulasi, dan tidak ada token, password, service role, email pribadi, atau nomor telepon yang ditampilkan.</div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">07 · Screenshot Antarmuka</span></div>
+  <div class="eyebrow">Bukti implementasi · 1/3</div>
+  <h1>Inventory dan Analyst</h1>
+  <div class="simulation">CONTOH SIMULASI — BUKAN DATA REAL</div>
+  <figure class="shot-card">
+    <h3><span>03</span> Streamlit Inventory Overview</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/inventory.png" alt="Halaman inventori StockQu menampilkan tiga cabang dan 150 SKU-cabang">
+    <figcaption>Tiga cabang dan 150 kombinasi SKU–cabang dibaca dari Supabase; stok tetap dipisah per cabang. UI menunjukkan run Analyst yang menjadi sumber status risiko.</figcaption>
+  </figure>
+  <figure class="shot-card">
+    <h3><span>04</span> Agent Analyst — Forecast &amp; Stockout Risk</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/analyst.png" alt="Halaman Analyst StockQu menampilkan lima risiko dan dua item urgent">
+    <figcaption>Snapshot run Analyst menampilkan lima risiko, dua urgent, formula stok, forecast, rentang uncertainty, dan sumber histori 180 hari.</figcaption>
+  </figure>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">07 · Screenshot Antarmuka</span></div>
+  <div class="eyebrow">Bukti implementasi · 2/3</div>
+  <h1>Purchaser dan Negotiator</h1>
+  <div class="simulation">CONTOH SIMULASI — BUKAN DATA REAL</div>
+  <figure class="shot-card">
+    <h3><span>05</span> Agent Purchaser — Budget Optimization</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/purchaser.png" alt="Halaman Purchaser StockQu menampilkan budget dan hasil optimasi MILP">
+    <figcaption>Budget total Rp50 juta, used Rp38 juta, tersedia Rp12 juta; MILP/CBC mengalokasikan lima item sebesar Rp3,434 juta.</figcaption>
+  </figure>
+  <figure class="shot-card">
+    <h3><span>06</span> Agent Negotiator — Supplier Comparison &amp; Draft PO</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/negotiator.png" alt="Halaman Negotiator StockQu menampilkan perbandingan supplier dan dua draft PO">
+    <figcaption>Lima SKU dibandingkan terhadap minimal tiga supplier per item. Hasil run berupa dua draft PO senilai Rp3,384 juta; email belum dikirim.</figcaption>
+  </figure>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">07 · Screenshot Antarmuka</span></div>
+  <div class="eyebrow">Bukti implementasi · 3/3</div>
+  <h1>Execution Trace dan Approval</h1>
+  <div class="simulation">CONTOH SIMULASI — BUKAN DATA REAL</div>
+  <figure class="shot-card">
+    <h3><span>07</span> Agent Execution Trace &amp; Recovery</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/execution.png" alt="Execution log StockQu menampilkan tool, status, durasi, dan fallback">
+    <figcaption>Execution Log memperlihatkan urutan agent/tool, run ID, status, percobaan, durasi, dan ringkasan output yang aman untuk audit.</figcaption>
+  </figure>
+  <figure class="shot-card">
+    <h3><span>08</span> Approval &amp; PO Lifecycle</h3>
+    <img class="shot short" src="../proposal-assets/screenshots/approval.png" alt="Halaman approval StockQu menunjukkan dua purchase order masih berstatus draft">
+    <figcaption>Pada snapshot ini belum ada approval request: dua PO tetap draft pada tahap 1/4. Kondisi ini membuktikan guardrail—tanpa approval, PO tidak dikirim dan stok tidak berubah.</figcaption>
+  </figure>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+<section class="page">
+  <div class="page-header"><span class="brand">STOCKQU</span><span class="section">08–09 · Future &amp; Lampiran</span></div>
+  <div class="eyebrow">Rencana pengembangan</div>
+  <h1>Dari prototipe terukur<br>menuju pilot yang bertanggung jawab</h1>
+  <div class="two-col">
+    <div>
+      <h2>8.1 Tahap berikutnya</h2>
+      <ul>
+        <li>Pilot terbatas dengan data operasional yang berizin dan baseline sebelum–sesudah.</li>
+        <li>Semantic retrieval pgvector setelah provider embedding dipilih, dievaluasi, dan diberi guardrail.</li>
+        <li>Model demand intermittent, rolling backtest, dan monitoring drift.</li>
+        <li>Integrasi ERP/POS, queue, observability, SLA konektor, serta goods receipt terverifikasi.</li>
+        <li>Evaluasi supplier dari SLA aktual dan pelacakan delivery end-to-end.</li>
+      </ul>
+      <h2>8.2 Kriteria kesiapan pilot</h2>
+      <div class="card mint"><p>Deployment HTTPS persisten · secrets server-side · RLS teruji · n8n production workflows aktif · approval E2E · monitoring · backup · rollback · test data terpisah.</p></div>
+    </div>
+    <div>
+      <h2>9. Tautan penting</h2>
+      <div class="evidence"><div><strong>Repository kode &amp; README</strong><br><a class="link" href="https://github.com/akmalscript/stockqu">github.com/akmalscript/stockqu</a><br><span class="tiny muted">Remote tersedia, tetapi URL publik mengembalikan 404 tanpa login saat diverifikasi 10 Nov 2026.</span></div><span class="status pending">AKSES TERBATAS</span></div>
+      <div class="evidence"><div><strong>Live Streamlit demo</strong><br><span class="tiny muted">Belum dipublikasikan pada saat finalisasi PDF.</span></div><span class="status pending">BELUM PUBLIK</span></div>
+      <div class="evidence"><div><strong>Video demo 3–5 menit</strong><br><span class="tiny muted">Tautan publik belum tersedia di repository.</span></div><span class="status pending">BELUM PUBLIK</span></div>
+      <div class="evidence"><div><strong>Test &amp; arsitektur</strong><br><a class="link" href="https://github.com/akmalscript/stockqu/tree/main/docs">github.com/akmalscript/stockqu/tree/main/docs</a></div><span class="status pending">AKSES TERBATAS</span></div>
+      <div class="evidence"><div><strong>Surat keaslian</strong><br><span class="tiny muted">Disiapkan dan diunggah sebagai berkas terpisah sesuai portal panitia.</span></div><span class="status pending">BERKAS TERPISAH</span></div>
+    </div>
+  </div>
+  <h2>Checklist final pengumpulan</h2>
+  <ul class="checklist">
+    <li>PDF A4, 15 halaman, tanpa bagian kosong.</li>
+    <li>Nama tim dan anggota sudah lengkap.</li>
+    <li>Screenshot berasal dari aplikasi.</li>
+    <li>Data simulasi diberi label eksplisit.</li>
+    <li>Angka memiliki run ID dan sumber.</li>
+    <li>Tidak ada secret atau data pribadi.</li>
+    <li>Link publik diuji sebelum upload.</li>
+    <li>Surat keaslian diunggah terpisah.</li>
+  </ul>
+  <div class="callout"><strong>Catatan submission:</strong> sebelum mengirim, tim masih perlu mengganti status live demo dan video hanya jika URL publik final benar-benar tersedia dan dapat dibuka tanpa izin khusus.</div>
+  <div class="footer"><span><strong>StockQu</strong> · GTNIC 2026</span><span class="page-num"></span></div>
+</section>
+
+</body>
+</html>
