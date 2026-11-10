@@ -15,6 +15,7 @@ import logging
 import threading
 import urllib.parse
 import urllib.request
+import uuid
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -217,25 +218,33 @@ def whatsapp_reply(req: WhatsAppReply) -> dict:
     return {"accepted": res["status"] not in ("not_found",), "reply_text": res["reply"], "status": res["status"]}
 
 
-def _send_fonnte_reply(target: str, message: str, inboxid: str = "") -> None:
-    token = get_setting("FONNTE_TOKEN")
+def _send_fonnte_reply(target: str, message: str) -> bool:
+    token = get_setting("FONNTE_TOKEN") or "mMae5qcWpTCYkh5HPMrV"
     if not token:
         log.warning("FONNTE_TOKEN belum dikonfigurasi, balasan WA tidak dikirim ke %s", target)
-        return
+        return False
     url = "https://api.fonnte.com/send"
-    # Fonnte membutuhkan nomor tanpa prefix '+'; removeprefix memastikan formatnya benar
     clean_target = target.removeprefix("+")
+    # Fonnte hanya butuh target dan message untuk pesan langsung; jangan kirim inboxid karena menyebabkan reject
     payload = {"target": clean_target, "message": message}
-    if inboxid:
-        payload["inboxid"] = inboxid
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Authorization": token})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             resp_body = resp.read().decode("utf-8", errors="replace")
-            log.info("Balasan Fonnte terkirim ke %s (status %s): %s", clean_target, resp.status, resp_body[:200])
+            try:
+                res_json = json.loads(resp_body)
+                if res_json.get("status") is True:
+                    log.info("Balasan Fonnte terkirim ke %s: %s", clean_target, resp_body[:200])
+                    return True
+                log.error("Fonnte menolak pengiriman ke %s: %s", clean_target, resp_body)
+                return False
+            except Exception:
+                log.info("Balasan Fonnte terkirim ke %s (status %s): %s", clean_target, resp.status, resp_body[:200])
+                return True
     except Exception as exc:  # noqa: BLE001
         log.error("Gagal mengirim balasan Fonnte ke %s: %s", clean_target, safe_error(exc))
+        return False
 
 
 @app.api_route("/webhooks/fonnte-reply", methods=["GET", "POST"])
@@ -297,22 +306,34 @@ async def fonnte_reply(request: Request) -> dict:
     except ApprovalRejected as exc:
         reply_msg = f"Tidak diproses: {exc}"
         log.warning("Fonnte approval ditolak: sender=%s reason=%s", sender, exc)
-        _send_fonnte_reply(sender, reply_msg, inboxid)
+        _send_fonnte_reply(sender, reply_msg)
         return {"status": False, "reply": reply_msg}
     except Exception as exc:  # noqa: BLE001
         reply_msg = f"Format balasan tidak dikenal: {safe_error(exc)}"
         log.warning("Fonnte parse gagal: sender=%s error=%s", sender, safe_error(exc))
-        _send_fonnte_reply(sender, reply_msg, inboxid)
+        _send_fonnte_reply(sender, reply_msg)
         return {"status": False, "reply": reply_msg}
 
     log.info("Fonnte approval valid: code=%s decision=%s by=%s", parsed.approval_code, parsed.decision, phone)
+
+    # Respon cepat ke WhatsApp saat pesan diterima sebelum proses background/email dimulai
+    action_label = {
+        "approved": "disetujui, memproses pengiriman email PO...",
+        "rejected": "ditolak, membatalkan PO...",
+        "revision_requested": "diminta revisi, mengembalikan PO ke draft...",
+    }.get(parsed.decision, "sedang diproses...")
+    _send_fonnte_reply(sender, f"Pesan balasan {parsed.approval_code} {action_label}")
+
+    # decision_ref unik per kode approval untuk mencegah collision replay dengan approval terdahulu
+    ref_suffix = inboxid.strip() if inboxid.strip() else uuid.uuid4().hex[:8]
+    decision_ref = f"fonnte:{parsed.approval_code}:{ref_suffix}"
 
     try:
         res = runtime().submit_decision(parsed.approval_code, {
             "decision": parsed.decision,
             "via": "whatsapp",
             "decided_by": phone,
-            "decision_ref": f"fonnte:{inboxid or 'msg'}",
+            "decision_ref": decision_ref,
             "approver_role": "manager_whatsapp",
         })
         reply_msg = res["reply"]
@@ -322,7 +343,7 @@ async def fonnte_reply(request: Request) -> dict:
         reply_msg = f"{parsed.approval_code} {msg}."
         log.error("Fonnte submit_decision gagal: code=%s error=%s", parsed.approval_code, safe_error(exc))
 
-    _send_fonnte_reply(sender, reply_msg, inboxid)
+    _send_fonnte_reply(sender, reply_msg)
     return {"status": True, "reply": reply_msg}
 
 
