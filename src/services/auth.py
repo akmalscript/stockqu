@@ -154,16 +154,68 @@ def restore_session(tokens: dict[str, str]) -> tuple[ActorContext, dict[str, str
     """Pulihkan session dan selalu verifikasi user; jangan percaya payload session lokal."""
     access_token = str(tokens.get("access_token") or "")
     refresh_token = str(tokens.get("refresh_token") or "")
-    if not access_token or not refresh_token:
+    if not access_token and not refresh_token:
         raise AuthenticationRequired("Session tidak lengkap")
     client = _auth_client()
-    refreshed = client.auth.set_session(access_token, refresh_token)
-    session = _value(refreshed, "session")
+    session = None
+    if access_token and refresh_token:
+        try:
+            refreshed = client.auth.set_session(access_token, refresh_token)
+            session = _value(refreshed, "session")
+        except Exception:
+            session = None
+    if session is None and refresh_token:
+        refreshed = client.auth.refresh_session(refresh_token)
+        session = _value(refreshed, "session")
+    if session is None:
+        raise AuthenticationRequired("Sesi Supabase tidak valid atau kedaluwarsa")
     current_access = str(_value(session, "access_token", access_token))
     current_refresh = str(_value(session, "refresh_token", refresh_token))
+    if not current_access:
+        raise AuthenticationRequired("Token akses Supabase kosong")
     verified = client.auth.get_user(current_access)
     actor = _actor_from_verified_user(_value(verified, "user"))
     return actor, {"access_token": current_access, "refresh_token": current_refresh}, client
+
+
+def _session_cipher():
+    import base64
+    import hashlib
+    from cryptography.fernet import Fernet
+
+    secret = (
+        get_setting("STOCKQU_SECRET_KEY")
+        or get_setting("SUPABASE_SERVICE_ROLE_KEY")
+        or get_setting("SUPABASE_ANON_KEY")
+        or "stockqu-auth-session-key"
+    )
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def serialize_session(tokens: dict[str, str]) -> str:
+    import json
+
+    cipher = _session_cipher()
+    payload = json.dumps(tokens).encode("utf-8")
+    return cipher.encrypt(payload).decode("utf-8")
+
+
+def deserialize_session(token_str: str, max_age_seconds: int = 86400 * 7) -> dict[str, str] | None:
+    import json
+    from cryptography.fernet import InvalidToken
+
+    if not token_str or not isinstance(token_str, str):
+        return None
+    cipher = _session_cipher()
+    try:
+        raw = cipher.decrypt(token_str.encode("utf-8"), ttl=max_age_seconds)
+        data = json.loads(raw.decode("utf-8"))
+        if isinstance(data, dict) and (data.get("access_token") or data.get("refresh_token")):
+            return data
+    except (InvalidToken, Exception):
+        return None
+    return None
 
 
 def require_streamlit_access(allowed_roles: Iterable[str], action: str):
@@ -171,15 +223,23 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
     import streamlit as st
 
     state_key = "stockqu_auth_tokens"
+    param_key = "_auth"
     tokens = st.session_state.get(state_key)
+    if not tokens:
+        query_token = st.query_params.get(param_key)
+        if query_token:
+            tokens = deserialize_session(query_token)
+
     actor = None
     client = None
     if tokens:
         try:
             actor, refreshed, client = restore_session(tokens)
             st.session_state[state_key] = refreshed
+            st.query_params[param_key] = serialize_session(refreshed)
         except Exception:  # noqa: BLE001 - session invalid harus kembali ke login
             st.session_state.pop(state_key, None)
+            st.query_params.pop(param_key, None)
 
     if actor is None:
         st.title("Login StockQu")
@@ -192,6 +252,7 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
             try:
                 actor, new_tokens, client = sign_in(email.strip(), password)
                 st.session_state[state_key] = new_tokens
+                st.query_params[param_key] = serialize_session(new_tokens)
                 st.rerun()
             except (AuthenticationRequired, AuthorizationDenied) as exc:
                 st.error(str(exc))
@@ -205,6 +266,7 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
         st.error(str(exc))
         if st.button("Logout"):
             st.session_state.pop(state_key, None)
+            st.query_params.pop(param_key, None)
             st.rerun()
         st.stop()
 
@@ -212,6 +274,9 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
         st.caption(f"{actor.email or actor.user_id} · {actor.role}")
         if st.button("Logout", key=f"logout-{action}"):
             st.session_state.pop(state_key, None)
+            st.session_state.pop("stockqu_actor", None)
+            st.session_state.pop("stockqu_user_client", None)
+            st.query_params.pop(param_key, None)
             try:
                 client.auth.sign_out()
             except Exception:  # noqa: BLE001 - session lokal tetap dihapus

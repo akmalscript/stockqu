@@ -86,3 +86,25 @@ def test_workflow_deadline_is_cooperative_and_deterministic():
     now[0] = 15.0
     with pytest.raises(WorkflowDeadlineExceeded):
         deadline.check("forecast")
+
+
+def test_session_serialization_encrypts_and_deserializes():
+    from src.services.auth import deserialize_session, serialize_session
+
+    tokens = {"access_token": "acc-token-12345", "refresh_token": "ref-token-67890"}
+    encrypted = serialize_session(tokens)
+    assert isinstance(encrypted, str)
+    assert "ref-token-67890" not in encrypted
+    assert "acc-token-12345" not in encrypted
+
+    recovered = deserialize_session(encrypted)
+    assert recovered == tokens
+
+
+def test_session_deserialization_handles_corrupt_or_empty_gracefully():
+    from src.services.auth import deserialize_session
+
+    assert deserialize_session("") is None
+    assert deserialize_session(None) is None  # type: ignore[arg-type]
+    assert deserialize_session("not-a-valid-encrypted-fernet-token") is None
+

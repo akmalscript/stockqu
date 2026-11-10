@@ -4,7 +4,7 @@ Aturan:
 1. Validasi tiap baris sheet: SKU dikenal, cabang dikenal, stok angka >= 0, tidak duplikat (sku, branch).
    Baris invalid DITOLAK dan dicatat - tidak pernah ditebak.
 2. Konflik (nilai stok beda): yang `updated_at`-nya lebih baru menang.
-   Baris sheet tanpa `updated_at` dianggap edit manual terbaru (Sheets = sumber stok real-time).
+   Baris sheet tanpa `updated_at` atau dengan `updated_at` sama (edit manual di Sheets) dianggap edit terbaru (Sheets = sumber stok real-time).
 3. Hasil gabungan ditulis balik ke Supabase (yang menang dari Sheets) dan ke Sheets (tulis ulang penuh),
    sehingga keduanya identik. Stok TIDAK pernah dijumlahkan antar cabang.
 4. Setiap sinkron dicatat di `sync_logs`. Gagal tulis tidak mematikan alur (status partial/failed).
@@ -180,8 +180,13 @@ def sync_inventory_two_way(
             continue
         report.conflicts += 1
         db_ts = parse_ts(db["updated_at"])
-        sheet_wins = sheet_ts is None or db_ts is None or sheet_ts > db_ts
-        winner_ts = (sheet_ts or now) if sheet_wins else db_ts
+        # Sheets = sumber stok real-time. Jika user edit sel sheet manual, updated_at di sheet
+        # masih sama dengan sync sebelumnya (sheet_ts == db_ts), maka edit sheet dianggap menang.
+        sheet_wins = sheet_ts is None or db_ts is None or sheet_ts >= db_ts
+        if sheet_wins:
+            winner_ts = sheet_ts if (sheet_ts is not None and db_ts is not None and sheet_ts > db_ts) else now
+        else:
+            winner_ts = db_ts
         report.conflict_details.append(
             {
                 "sku": row.sku,

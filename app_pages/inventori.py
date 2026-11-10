@@ -15,8 +15,57 @@ from src.ui.session import page_context
 from src.utils.errors import safe_error
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "melihat inventori")
-st.title("Inventori multi-gudang")
-st.caption("Stok per cabang, terpisah. Sumber: Supabase inventory (hasil sinkron Google Sheets) + forecast Analyst terakhir.")
+
+col_title, col_actions = st.columns([3, 2])
+with col_title:
+    st.title("Inventori multi-gudang")
+    st.caption("Stok per cabang, terpisah. Sumber: Supabase inventory (hasil sinkron Google Sheets) + forecast Analyst terakhir.")
+with col_actions:
+    st.write("")
+    btn_col1, btn_col2 = st.columns(2)
+    with btn_col1:
+        sync_clicked = st.button("🔄 Sinkron Sheets", type="primary", use_container_width=True,
+                                 help="Tarik perubahan stok dari Google Sheets ke Supabase dan sebaliknya.")
+    with btn_col2:
+        refresh_clicked = st.button("🔃 Refresh", use_container_width=True,
+                                    help="Bersihkan cache dan muat ulang data dari database.")
+
+if sync_clicked:
+    from datetime import datetime, timezone
+    from src.services.sheets_client import SheetsClient, sheets_configured
+    from src.services.inventory_sync import sync_inventory_two_way
+    from src.services.supabase_client import has_write_key
+
+    if not sheets_configured():
+        st.warning("Google Sheets belum dikonfigurasi (GOOGLE_SHEETS_SPREADSHEET_ID).")
+    else:
+        try:
+            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase..."):
+                sheets = SheetsClient()
+                can_write = has_write_key()
+                report = sync_inventory_two_way(
+                    repository,
+                    sheets,
+                    run_id=f"manual-sync-{int(datetime.now(timezone.utc).timestamp())}",
+                    write_enabled=can_write,
+                    actor_id=actor.user_id,
+                    actor_role=actor.role,
+                )
+                load.clear()
+                if report.status == "failed":
+                    st.error(f"Sinkronisasi gagal: {'; '.join(report.errors)}")
+                else:
+                    msg = f"Sinkronisasi berhasil ({report.status}): {report.rows_written_supabase} baris ke Supabase, {report.rows_written_sheets} ke Sheets."
+                    if report.conflicts:
+                        msg += f" (Terdeteksi {report.conflicts} perbedaan stok yang diselaraskan)"
+                    st.success(msg)
+                    st.rerun()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Gagal sinkronisasi: {safe_error(exc)}")
+
+if refresh_clicked:
+    load.clear()
+    st.rerun()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -85,6 +134,10 @@ with st.container(horizontal=True):
             st.metric(name, f"{len(sub)} SKU")
             st.caption(f"{int((sub['Risiko'] == 'URGENT').sum())} URGENT · {int((sub['Risiko'] == 'RISIKO').sum())} RISIKO")
 
+st.info(
+    "💡 **Tips:** Google Sheets adalah sumber stok real-time. Jika Anda mengedit stok di Google Sheets (seperti mengubah SKU-A Branch 1 menjadi 50), "
+    "klik tombol **🔄 Sinkron Sheets** di atas untuk menyinkronkan data langsung ke web tanpa menunggu jadwal otomatis jam 07:00 WIB."
+)
 dummy_banner(repository)
 st.dataframe(
     view.sort_values(["Cabang", "Days-to-stockout"], na_position="last"), hide_index=True, width="stretch",

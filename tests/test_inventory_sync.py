@@ -40,6 +40,19 @@ def test_older_sheet_value_loses():
     assert row[3] == 100
 
 
+def test_sheet_edit_with_same_timestamp_wins_as_manual_edit():
+    repo = FakeRepo()
+    # Kasus: user edit stok di cell Google Sheets (mis. jadi 50) tanpa ubah kolom updated_at
+    sheets = FakeSheets([["SKU-A", "Item A", "Branch 1", "50", "2026-11-07T06:00:00+00:00", "supabase"]])
+    rep = sync_inventory_two_way(repo, sheets, "RUN-SAME-TS", now=NOW, sleep=no_sleep)
+    assert rep.conflicts == 1
+    assert rep.merged[("pA", "b1")]["stock_qty"] == 50.0
+    assert rep.merged[("pA", "b1")]["source"] == "sheets"
+    assert repo.upserts == [
+        {"product_id": "pA", "branch_id": "b1", "stock_qty": 50.0, "updated_at": NOW.isoformat()}
+    ]
+
+
 def test_invalid_rows_rejected_not_guessed():
     repo = FakeRepo()
     sheets = FakeSheets([
