@@ -334,19 +334,6 @@ def main() -> None:
     )
 
     with tabs[0]:
-        nav_link(
-            "app_pages/prediksi.py",
-            label="Buka detail Prediksi & Risiko",
-            icon=":material/trending_down:",
-            width="stretch",
-        )
-        nav_link(
-            "app_pages/rencana.py",
-            label="Buka detail Rencana Pembelian",
-            icon=":material/account_balance_wallet:",
-            width="stretch",
-        )
-
         risk_rows = [
             row
             for row in snapshot.forecasts
@@ -397,6 +384,19 @@ def main() -> None:
                 f"{LABEL_NOT_FOUND} - inventory dan hasil Analyst belum tersedia "
                 "untuk akses user ini."
             )
+
+        nav_link(
+            "app_pages/prediksi.py",
+            label="Buka detail Prediksi & Risiko",
+            icon=":material/trending_down:",
+            width="stretch",
+        )
+        nav_link(
+            "app_pages/rencana.py",
+            label="Buka detail Rencana Pembelian",
+            icon=":material/account_balance_wallet:",
+            width="stretch",
+        )
 
     with tabs[1]:
         st.subheader("Execution Trace - Agent Terakhir")
