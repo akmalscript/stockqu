@@ -24,7 +24,7 @@ from src.services.work_admission import (
     WorkRejected,
     work_admission,
 )
-from src.ui.components import auto_sync_inventory_on_load, trigger_sheets_sync_ui
+from src.ui.components import auto_sync_inventory_on_load
 from src.ui.session import page_context
 from src.utils import formulas as F
 
@@ -93,12 +93,6 @@ with st.sidebar:
                 st.warning(warning)
         except (WorkRejected, WorkflowDeadlineExceeded, PermissionError) as exc:
             st.error(str(exc))
-
-    st.divider()
-    if st.button("🔄 Sinkron Sheets", use_container_width=True,
-                 help="Tarik perubahan stok dari Google Sheets ke Supabase"):
-        if trigger_sheets_sync_ui(repository, actor):
-            st.rerun()
 
 # ------------------------------------------------------------------ load data
 try:

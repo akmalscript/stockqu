@@ -15,7 +15,7 @@ from src.config import (
 )
 from src.services.auth import ALL_USER_ROLES
 from src.services.dashboard import load_dashboard_snapshot
-from src.ui.components import auto_sync_inventory_on_load, trigger_sheets_sync_ui
+from src.ui.components import auto_sync_inventory_on_load
 from src.ui.session import page_context
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "membuka dashboard StockQu")
@@ -180,7 +180,6 @@ def workflow_status() -> None:
 
 def main() -> None:
     st.title("StockQu")
-    st.caption("Streamlit + Supabase + LangGraph + n8n | GTNIC Enterprise dan Industry")
 
     latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None
     budget_available = snapshot.budget.get("available_budget") if snapshot.budget else None
@@ -197,10 +196,6 @@ def main() -> None:
             )
         else:
             st.caption(f"Sinkron Sheets ↔ Supabase: {LABEL_NOT_FOUND}")
-        if st.button("🔄 Sinkron Sheets", key="cc_sidebar_sync", use_container_width=True,
-                     help="Tarik perubahan stok dari Google Sheets ke Supabase"):
-            if trigger_sheets_sync_ui(repository, actor):
-                st.rerun()
         st.divider()
         st.info(
             "Human-in-the-loop: tanpa balas OK di WhatsApp, PO tidak dikirim "
@@ -266,14 +261,7 @@ def main() -> None:
             help="Target demo pada SRS, bukan hasil ukur aktual",
         )
 
-        col_hdr, col_sync = st.columns([3, 1], vertical_alignment="bottom")
-        with col_hdr:
-            st.subheader("5 Item Prioritas")
-        with col_sync:
-            if st.button("🔄 Sinkron Sheets", key="cc_overview_sync", use_container_width=True,
-                         help="Tarik perubahan stok dari Google Sheets ke Supabase"):
-                if trigger_sheets_sync_ui(repository, actor):
-                    st.rerun()
+        st.subheader("5 Item Prioritas")
 
         if risk_rows:
             st.dataframe(

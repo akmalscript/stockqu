@@ -14,7 +14,6 @@ from src.ui.components import (
     auto_sync_inventory_on_load,
     dummy_banner,
     local_time,
-    trigger_sheets_sync_ui,
 )
 from src.ui.session import page_context
 from src.utils import formulas as F
@@ -39,28 +38,7 @@ def load(_repo, user_key: str) -> dict:
     return out
 
 
-col_title, col_actions = st.columns([3, 2])
-with col_title:
-    st.title("Inventori multi-gudang")
-    st.caption("Stok per cabang, terpisah. Sumber: Supabase inventory (hasil sinkron Google Sheets) + forecast Analyst terakhir.")
-with col_actions:
-    st.write("")
-    btn_col1, btn_col2 = st.columns(2)
-    with btn_col1:
-        sync_clicked = st.button("🔄 Sinkron Sheets", type="primary", use_container_width=True,
-                                 help="Tarik perubahan stok dari Google Sheets ke Supabase dan sebaliknya.")
-    with btn_col2:
-        refresh_clicked = st.button("🔃 Refresh", use_container_width=True,
-                                    help="Muat ulang data inventori dan selaraskan dengan Sheets.")
-
-if refresh_clicked:
-    st.session_state.pop("_last_auto_sync_inventori", None)
-    auto_sync_inventory_on_load(repository, actor, "inventori", min_interval_seconds=0)
-    st.rerun()
-
-if sync_clicked:
-    if trigger_sheets_sync_ui(repository, actor):
-        st.rerun()
+st.title("Inventori multi-gudang")
 
 try:
     data = load(repository, actor.user_id)
@@ -132,10 +110,6 @@ with st.container(horizontal=True):
             st.metric(name, f"{len(sub)} SKU")
             st.caption(f"{int((sub['Risiko'] == 'URGENT').sum())} URGENT · {int((sub['Risiko'] == 'RISIKO').sum())} RISIKO")
 
-st.info(
-    "💡 **Tips:** Google Sheets adalah sumber stok real-time. Jika Anda mengedit stok di Google Sheets (seperti mengubah SKU-A Branch 1 menjadi 50), "
-    "klik tombol **🔄 Sinkron Sheets** di atas untuk menyinkronkan data langsung ke web tanpa menunggu jadwal otomatis jam 07:00 WIB."
-)
 dummy_banner(repository)
 st.dataframe(
     view.sort_values(["Cabang", "Days-to-stockout"], na_position="last"), hide_index=True, width="stretch",
