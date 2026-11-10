@@ -2,8 +2,7 @@
 
 Sistem inventori & pengadaan barang berbasis AI multi-agent yang mampu memprediksi stok habis, menentukan prioritas pembelian berdasarkan anggaran, membandingkan supplier, membuat draft PO, meminta approval via WhatsApp, dan mengupdate stok secara otomatis.
 
-Target: **GTNIC Enterprise dan Industry**  
-Demo: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari). Akses: [stockqu.streamlit.app](https://stockqu.streamlit.app/)
+Target: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari)
 
 ## Stack
 
