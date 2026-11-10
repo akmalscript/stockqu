@@ -46,17 +46,34 @@ def get_setting(name: str, default: str | None = None) -> str | None:
     value = os.getenv(name)
     if value:
         return value
+    for alt in (name.lower(), name.upper()):
+        alt_val = os.getenv(alt)
+        if alt_val:
+            return alt_val
     try:
+        import json
         import streamlit as st
 
-        if name in st.secrets:
-            return str(st.secrets[name])
+        for candidate in (name, name.lower(), name.upper()):
+            if candidate in st.secrets:
+                val = st.secrets[candidate]
+                if isinstance(val, (dict, list)):
+                    return json.dumps(val)
+                return str(val)
+        for section in ("google_sheets", "sheets", "google", "gcp", "service_account"):
+            if section in st.secrets and isinstance(st.secrets[section], dict):
+                sec = st.secrets[section]
+                for sub in (name, name.lower(), name.removeprefix("GOOGLE_SHEETS_").lower(), name.removeprefix("GOOGLE_").lower()):
+                    if sub in sec:
+                        val = sec[sub]
+                        if isinstance(val, (dict, list)):
+                            return json.dumps(val)
+                        return str(val)
     except Exception:  # noqa: BLE001 - secrets tidak tersedia di luar Streamlit
         return default
     return default
 
 
-@lru_cache(maxsize=1)
 def sheets_settings() -> dict:
     return {
         "spreadsheet_id": get_setting("GOOGLE_SHEETS_SPREADSHEET_ID"),

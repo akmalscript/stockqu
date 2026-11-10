@@ -16,6 +16,23 @@ from src.utils.errors import safe_error
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "melihat inventori")
 
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load(_repo, user_key: str) -> dict:
+    """Cache per user (RLS bisa berbeda per role/cabang)."""
+    out = {"products": _repo.fetch_products(), "branches": _repo.fetch_branches(),
+           "contracts": _repo.fetch_reference_contracts(), "suppliers": _repo.fetch_suppliers(), "issues": []}
+    try:
+        out["inventory"] = _repo.fetch_inventory_detailed()
+    except Exception as exc:  # noqa: BLE001 - kolom incoming_qty baru ada setelah migration P4
+        out["issues"].append(f"incoming_qty: {safe_error(exc)}")
+        out["inventory"] = _repo.fetch_inventory()
+    run = _repo.latest_analyst_run_id()
+    out["forecasts"] = _repo.fetch_forecasts(run) if run else []
+    out["analyst_run"] = run
+    return out
+
+
 col_title, col_actions = st.columns([3, 2])
 with col_title:
     st.title("Inventori multi-gudang")
@@ -30,15 +47,19 @@ with col_actions:
         refresh_clicked = st.button("🔃 Refresh", use_container_width=True,
                                     help="Bersihkan cache dan muat ulang data dari database.")
 
+if refresh_clicked:
+    load.clear()
+    st.rerun()
+
 if sync_clicked:
     from datetime import datetime, timezone
+    from src.config import sheets_settings
     from src.services.sheets_client import SheetsClient, sheets_configured
     from src.services.inventory_sync import sync_inventory_two_way
     from src.services.supabase_client import has_write_key
+    from src.services import agent_service_client
 
-    if not sheets_configured():
-        st.warning("Google Sheets belum dikonfigurasi (GOOGLE_SHEETS_SPREADSHEET_ID).")
-    else:
+    if sheets_configured():
         try:
             with st.spinner("Menyinkronkan Google Sheets ↔ Supabase..."):
                 sheets = SheetsClient()
@@ -62,26 +83,26 @@ if sync_clicked:
                     st.rerun()
         except Exception as exc:  # noqa: BLE001
             st.error(f"Gagal sinkronisasi: {safe_error(exc)}")
-
-if refresh_clicked:
-    load.clear()
-    st.rerun()
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def load(_repo, user_key: str) -> dict:
-    """Cache per user (RLS bisa berbeda per role/cabang)."""
-    out = {"products": _repo.fetch_products(), "branches": _repo.fetch_branches(),
-           "contracts": _repo.fetch_reference_contracts(), "suppliers": _repo.fetch_suppliers(), "issues": []}
-    try:
-        out["inventory"] = _repo.fetch_inventory_detailed()
-    except Exception as exc:  # noqa: BLE001 - kolom incoming_qty baru ada setelah migration P4
-        out["issues"].append(f"incoming_qty: {safe_error(exc)}")
-        out["inventory"] = _repo.fetch_inventory()
-    run = _repo.latest_analyst_run_id()
-    out["forecasts"] = _repo.fetch_forecasts(run) if run else []
-    out["analyst_run"] = run
-    return out
+    elif agent_service_client.configured():
+        try:
+            with st.spinner("Memicu workflow sinkronisasi stok via Agent Service..."):
+                res = agent_service_client.trigger_manual_run(actor.user_id)
+                load.clear()
+                st.success(f"Sinkronisasi telah dipicu di Agent Service (Run ID: `{res.get('run_id')}`). Silakan klik **Refresh** dalam beberapa saat.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Gagal menghubungi Agent Service: {safe_error(exc)}")
+    else:
+        cfg = sheets_settings()
+        missing = []
+        if not cfg.get("spreadsheet_id"):
+            missing.append("GOOGLE_SHEETS_SPREADSHEET_ID")
+        if not (cfg.get("service_account_file") or cfg.get("service_account_json")):
+            missing.append("GOOGLE_SERVICE_ACCOUNT_JSON")
+        missing_str = ", ".join(missing) if missing else "GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON"
+        st.warning(
+            f"Google Sheets belum dikonfigurasi di environment ini ({missing_str}). "
+            "Tambahkan secret tersebut di Streamlit Cloud (App settings -> Secrets) atau aktifkan Agent Service."
+        )
 
 
 try:
