@@ -122,15 +122,23 @@ def test_email_outbox_migration_enforces_approval_and_service_role_only():
 
 def test_local_compose_is_loopback_only_and_does_not_contain_secrets():
     compose = (ROOT / "n8n/docker-compose.yml").read_text()
+    production_compose = (ROOT / "n8n/docker-compose.prod.yml").read_text()
     env_example = (ROOT / "n8n/.env.example").read_text()
+    production_env = (ROOT / "n8n/.env.production.example").read_text()
 
     assert "127.0.0.1:${N8N_PORT:-5678}:5678" in compose
     assert "docker.n8n.io/n8nio/n8n:2.46.6" in compose
     assert "N8N_PUBLIC_API_DISABLED: \"true\"" in compose
     assert "N8N_COMMUNITY_PACKAGES_ENABLED: \"false\"" in compose
+    assert "WEBHOOK_URL:" in compose
+    assert "N8N_WEBHOOK_URL" not in compose
     assert "SUPABASE_URL=" in env_example
     assert "sb_secret_" not in env_example
     assert "client_secret" not in env_example.lower()
+    assert "WEBHOOK_URL=https://" in production_env
+    assert "localhost" not in production_env
+    assert "N8N_ENCRYPTION_KEY" in production_compose
+    assert 'N8N_SECURE_COOKIE: "true"' in production_compose
 
 
 def test_gmail_oauth_documentation_uses_minimum_working_scopes():

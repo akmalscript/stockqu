@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 
 from src.config import PROVIDER_REQUEST_TIMEOUT_SECONDS, get_setting
+from src.services.deployment import DeploymentConfigurationError, agent_service_base_url
 
 
 class AgentServiceUnavailable(RuntimeError):
@@ -11,16 +12,23 @@ class AgentServiceUnavailable(RuntimeError):
 
 
 def configured() -> bool:
-    return bool(get_setting("STOCKQU_AGENT_SERVICE_URL") and get_setting("N8N_TO_SERVICE_TOKEN"))
+    try:
+        agent_service_base_url()
+    except DeploymentConfigurationError:
+        return False
+    return bool(get_setting("N8N_TO_SERVICE_TOKEN"))
 
 
 def _post(path: str, payload: dict) -> dict:
     import requests
 
-    base = (get_setting("STOCKQU_AGENT_SERVICE_URL") or "").rstrip("/")
     token = get_setting("N8N_TO_SERVICE_TOKEN")
-    if not base or not token:
+    if not token:
         raise AgentServiceUnavailable("STOCKQU_AGENT_SERVICE_URL / N8N_TO_SERVICE_TOKEN belum diisi")
+    try:
+        base = agent_service_base_url()
+    except DeploymentConfigurationError as exc:
+        raise AgentServiceUnavailable(str(exc)) from exc
     try:
         res = requests.post(f"{base}{path}", json=payload, timeout=PROVIDER_REQUEST_TIMEOUT_SECONDS,
                             headers={"Authorization": f"Bearer {token}"})

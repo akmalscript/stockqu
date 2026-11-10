@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.config import PROVIDER_REQUEST_TIMEOUT_SECONDS, get_setting
+from src.services.deployment import DeploymentConfigurationError, n8n_webhook_url
 from src.utils.errors import safe_error
 from src.utils.retry import call_with_retry
 
@@ -42,12 +43,13 @@ class N8nClient:
         return self._session
 
     def post(self, url_setting: str, payload: dict) -> DispatchResult:
-        url = get_setting(url_setting)
         token = get_setting("SERVICE_TO_N8N_TOKEN")
-        if not url or not token:
+        if not token:
             return DispatchResult("skipped", f"{url_setting} / SERVICE_TO_N8N_TOKEN belum diisi")
-        if not url.startswith("https://") and (get_setting("STOCKQU_ALLOW_HTTP_N8N") or "") != "1":
-            return DispatchResult("failed", "Webhook n8n wajib HTTPS")
+        try:
+            url = n8n_webhook_url(url_setting)
+        except DeploymentConfigurationError as exc:
+            return DispatchResult("failed", str(exc))
 
         attempts = {"n": 0}
 

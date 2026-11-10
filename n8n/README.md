@@ -112,6 +112,14 @@ Untuk test lokal Docker Desktop, biasanya gunakan
 `http://host.docker.internal:8000` dan set `STOCKQU_ALLOW_HTTP_N8N=1` hanya pada
 Agent Service lokal.
 
+Untuk production self-hosted, salin `n8n/.env.production.example`, ganti semua
+domain `*.invalid`, isi `N8N_ENCRYPTION_KEY` acak, lalu jalankan base compose
+bersama `docker-compose.prod.yml`. Override production memaksa HTTPS, secure
+cookie, encryption key, `N8N_EDITOR_BASE_URL`, dan `WEBHOOK_URL`. Di belakang
+reverse proxy set `N8N_PROXY_HOPS=1` (atau sesuai jumlah proxy tepercaya).
+`WEBHOOK_URL`, bukan `N8N_WEBHOOK_URL`, adalah origin publik yang dipakai n8n
+untuk membentuk URL webhook production.
+
 Setelah workflow W2 dan W4 aktif, isi `.env` Agent Service:
 
 ```text

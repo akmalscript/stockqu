@@ -1,0 +1,10 @@
+services:
+  n8n:
+    environment:
+      N8N_HOST: "${N8N_HOST:?N8N_HOST wajib diisi}"
+      N8N_PROTOCOL: https
+      N8N_EDITOR_BASE_URL: "${N8N_EDITOR_BASE_URL:?N8N_EDITOR_BASE_URL wajib diisi}"
+      WEBHOOK_URL: "${WEBHOOK_URL:?WEBHOOK_URL wajib diisi}"
+      N8N_PROXY_HOPS: "${N8N_PROXY_HOPS:-1}"
+      N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY wajib diisi}"
+      N8N_SECURE_COOKIE: "true"

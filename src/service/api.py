@@ -25,6 +25,10 @@ from src.services.approval import (
     token_matches,
     verify_twilio_signature,
 )
+from src.services.deployment import (
+    DeploymentConfigurationError,
+    assert_agent_service_production_ready,
+)
 from src.utils.errors import safe_error
 
 log = logging.getLogger("stockqu.agent_service")
@@ -42,8 +46,9 @@ def runtime():
             from src.services.supabase_client import SupabaseNotConfigured
 
             try:
+                assert_agent_service_production_ready()
                 _runtime = get_runtime()
-            except (CheckpointNotConfigured, SupabaseNotConfigured) as exc:
+            except (CheckpointNotConfigured, DeploymentConfigurationError, SupabaseNotConfigured) as exc:
                 raise HTTPException(status_code=503, detail=f"Agent Service belum dikonfigurasi: {exc}") from exc
             except Exception as exc:
                 log.error("inisialisasi runtime gagal: %s", safe_error(exc))
@@ -92,6 +97,18 @@ class SentCallback(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict:
+    try:
+        assert_agent_service_production_ready()
+        runtime()
+    except HTTPException:
+        raise
+    except DeploymentConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=f"Konfigurasi production belum siap: {exc}") from exc
+    return {"status": "ready"}
 
 
 @app.post("/workflows/daily-run", dependencies=[Depends(require_token)], status_code=202)
