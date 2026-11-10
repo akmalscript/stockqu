@@ -177,7 +177,7 @@ def workflow_status() -> None:
 
 
 def main() -> None:
-    st.title("📦 StockQu - Multi-Agent Procurement System")
+    st.title("📦 StockQu")
     st.caption("Streamlit + Supabase + LangGraph + n8n | GTNIC Enterprise dan Industry")
 
     latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None

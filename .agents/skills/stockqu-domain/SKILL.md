@@ -1,6 +1,6 @@
 ---
 name: stockqu-domain
-description: Aturan bisnis StockQu Multi-Agent Procurement System. Pakai skill ini setiap kali mengerjakan StockQu di Antigravity, baik coding, desain dashboard, nulis proposal, atau demo. Memuat budget, rumus stok, peran 3 agent LangGraph, alur approval WhatsApp, role login, format Reasoning Trace dan Execution Trace, serta mapping F-01 sampai F-35. Trigger saat user menyebut StockQu, Analyst, Purchaser, Negotiator, days-to-stockout, PO, approval, gudang, atau GTNIC.
+description: Aturan bisnis StockQu Multi-Agent Inventory & Procurement System. Pakai skill ini setiap kali mengerjakan StockQu di Antigravity, baik coding, desain dashboard, nulis proposal, atau demo. Memuat budget, rumus stok, peran 3 agent LangGraph, alur approval WhatsApp, role login, format Reasoning Trace dan Execution Trace, serta mapping F-01 sampai F-35. Trigger saat user menyebut StockQu, Analyst, Purchaser, Negotiator, days-to-stockout, PO, approval, gudang, atau GTNIC.
 ---
 
 # StockQu Domain Skill

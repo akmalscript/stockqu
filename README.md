@@ -1,4 +1,4 @@
-# 📦 StockQu - Multi-Agent Procurement System
+# 📦 StockQu - Multi-Agent Inventory & Procurement System
 
 AI Agent otonom untuk distributor FMCG dengan 3 cabang gudang di Jawa Tengah.
 Bukan dashboard BI biasa. StockQu memprediksi stok akan habis, memutuskan pembelian dengan budget terbatas, membandingkan 3 supplier, membuat draft PO, meminta approval via WhatsApp, dan mengupdate stok otomatis.
@@ -265,6 +265,7 @@ Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan m
    ```
 
    Super Admin juga bisa upload PDF kontrak lain dari halaman **Perbandingan Supplier**.
+
 3. Jalankan Negotiator (setelah Purchaser punya plan tersimpan):
 
    ```bash
@@ -332,13 +333,13 @@ append-only yang diisi trigger.
 `app.py` adalah router `st.navigation`: login Supabase Auth sekali, lalu 11 halaman di `app_pages/`.
 Menu mengikuti role (hanya UX), sedangkan data tetap disaring RLS dengan JWT user.
 
-| Seksi | Halaman | Role |
-|---|---|---|
-| Operasional | Command center (status agent per tahap, jalankan sekarang), Inventori (stok fisik + in-transit per cabang) | semua |
-| Agent | Prediksi & risiko, PO & approval | semua |
-| Agent | Rencana pembelian, Perbandingan supplier | Super Admin, Purchasing Staff, Procurement Manager |
-| Jejak & laporan | Reason trace (faktor + sumber, tautan ke log run), Execution log, Analitik (KPI berlabel aktual/backtest/target), Ekspor (PDF/Excel) | semua |
-| Pengaturan | Admin (CRUD master data, upload kontrak, audit log, panduan user/role) | Super Admin |
+| Seksi           | Halaman                                                                                                                              | Role                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| Operasional     | Command center (status agent per tahap, jalankan sekarang), Inventori (stok fisik + in-transit per cabang)                           | semua                                              |
+| Agent           | Prediksi & risiko, PO & approval                                                                                                     | semua                                              |
+| Agent           | Rencana pembelian, Perbandingan supplier                                                                                             | Super Admin, Purchasing Staff, Procurement Manager |
+| Jejak & laporan | Reason trace (faktor + sumber, tautan ke log run), Execution log, Analitik (KPI berlabel aktual/backtest/target), Ekspor (PDF/Excel) | semua                                              |
+| Pengaturan      | Admin (CRUD master data, upload kontrak, audit log, panduan user/role)                                                               | Super Admin                                        |
 
 Role user diatur di Supabase Dashboard -> Authentication -> Users -> `app_metadata`,
 misalnya `{"role": "warehouse_manager", "branch_ids": ["<uuid Branch 1>"]}`.
