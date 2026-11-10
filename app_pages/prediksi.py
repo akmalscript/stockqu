@@ -24,13 +24,14 @@ from src.services.work_admission import (
     WorkRejected,
     work_admission,
 )
-from src.ui.components import trigger_sheets_sync_ui
+from src.ui.components import auto_sync_inventory_on_load, trigger_sheets_sync_ui
 from src.ui.session import page_context
 from src.utils import formulas as F
 
 TEAL, NAVY, MINT = "#0E7C61", "#1E2A44", "#EFF4F1"
 
 actor, user_client, repository = page_context(ANALYST_VIEW_ROLES, "melihat prediksi dan risiko")
+auto_sync_inventory_on_load(repository, actor, "prediksi")
 st.title("Prediksi & Risiko Stockout")
 st.caption("Agent 1 - The Analyst | histori 6 bulan | deteksi risiko habis 4-7 hari | stok per cabang, tidak dijumlahkan")
 

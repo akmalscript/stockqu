@@ -155,3 +155,10 @@ def sheets_settings() -> dict:
         "service_account_file": sa_file,
         "service_account_json": sa_json,
     }
+
+
+def sheets_configured() -> bool:
+    """Periksa apakah kredensial dan spreadsheet ID Google Sheets sudah dikonfigurasi."""
+    cfg = sheets_settings()
+    return bool(cfg.get("spreadsheet_id") and (cfg.get("service_account_file") or cfg.get("service_account_json")))
+

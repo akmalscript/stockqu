@@ -187,3 +187,55 @@ def trigger_sheets_sync_ui(repository, actor, clear_cache_fn=None) -> bool:
         )
         return False
 
+
+def auto_sync_inventory_on_load(
+    repository,
+    actor,
+    page_name: str = "default",
+    min_interval_seconds: int = 5,
+) -> bool:
+    """Otomatis selaraskan stok Google Sheets ↔ Supabase saat user masuk halaman atau refresh web.
+
+    Menggunakan debounce per-session agar widget/filter interaktif di halaman yang sama
+    tidak berulang kali melakukan request jaringan ke Google Sheets.
+    """
+    import time
+    from datetime import datetime, timezone
+    from src.config import sheets_configured
+    from src.services import agent_service_client
+    from src.services.inventory_sync import sync_inventory_two_way
+    from src.services.sheets_client import SheetsClient
+    from src.services.supabase_client import has_write_key
+
+    last_sync_key = f"_last_auto_sync_{page_name}"
+    now = time.time()
+    last_sync = st.session_state.get(last_sync_key, 0.0)
+    if (now - last_sync) < min_interval_seconds:
+        return False
+
+    st.session_state[last_sync_key] = now
+
+    if sheets_configured():
+        try:
+            sheets = SheetsClient()
+            can_write = has_write_key()
+            report = sync_inventory_two_way(
+                repository,
+                sheets,
+                run_id=f"auto-sync-{int(datetime.now(timezone.utc).timestamp())}",
+                write_enabled=can_write,
+                actor_id=actor.user_id,
+                actor_role=actor.role,
+            )
+            return report.status != "failed"
+        except Exception:  # noqa: BLE001
+            return False
+    elif agent_service_client.configured():
+        try:
+            agent_service_client.trigger_inventory_sync(actor.user_id)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+

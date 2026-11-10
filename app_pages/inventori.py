@@ -10,17 +10,22 @@ import streamlit as st
 
 from src.config import LABEL_NOT_FOUND
 from src.services.auth import ALL_USER_ROLES
-from src.ui.components import dummy_banner, local_time, trigger_sheets_sync_ui
+from src.ui.components import (
+    auto_sync_inventory_on_load,
+    dummy_banner,
+    local_time,
+    trigger_sheets_sync_ui,
+)
 from src.ui.session import page_context
 from src.utils import formulas as F
 from src.utils.errors import safe_error
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "melihat inventori")
+auto_sync_inventory_on_load(repository, actor, "inventori")
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def load(_repo, user_key: str) -> dict:
-    """Cache per user (RLS bisa berbeda per role/cabang)."""
+    """Muat data inventori terkini per user (RLS bisa berbeda per role/cabang)."""
     out = {"products": _repo.fetch_products(), "branches": _repo.fetch_branches(),
            "contracts": _repo.fetch_reference_contracts(), "suppliers": _repo.fetch_suppliers(), "issues": []}
     try:
@@ -46,14 +51,15 @@ with col_actions:
                                  help="Tarik perubahan stok dari Google Sheets ke Supabase dan sebaliknya.")
     with btn_col2:
         refresh_clicked = st.button("🔃 Refresh", use_container_width=True,
-                                    help="Bersihkan cache dan muat ulang data dari database.")
+                                    help="Muat ulang data inventori dan selaraskan dengan Sheets.")
 
 if refresh_clicked:
-    load.clear()
+    st.session_state.pop("_last_auto_sync_inventori", None)
+    auto_sync_inventory_on_load(repository, actor, "inventori", min_interval_seconds=0)
     st.rerun()
 
 if sync_clicked:
-    if trigger_sheets_sync_ui(repository, actor, clear_cache_fn=load.clear):
+    if trigger_sheets_sync_ui(repository, actor):
         st.rerun()
 
 try:

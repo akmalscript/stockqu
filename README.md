@@ -1,9 +1,8 @@
-# 📦 StockQu - Multi-Agent Inventory & Procurement System
+# StockQu - Multi-Agent Inventory & Procurement System
 
-AI Agent otonom untuk distributor FMCG dengan 3 cabang gudang di Jawa Tengah.
-Bukan dashboard BI biasa. StockQu memprediksi stok akan habis, memutuskan pembelian dengan budget terbatas, membandingkan 3 supplier, membuat draft PO, meminta approval via WhatsApp, dan mengupdate stok otomatis.
+Sistem inventori & pengadaan barang berbasis AI multi-agent yang mampu memprediksi stok habis, menentukan prioritas pembelian berdasarkan anggaran, membandingkan supplier, membuat draft PO, meminta approval via WhatsApp, dan mengupdate stok secara otomatis.
 
-Target: **GTNIC Enterprise dan Industry**
+Target: **GTNIC Enterprise dan Industry**  
 Demo: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari).
 
 ## Stack

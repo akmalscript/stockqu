@@ -15,10 +15,11 @@ from src.config import (
 )
 from src.services.auth import ALL_USER_ROLES
 from src.services.dashboard import load_dashboard_snapshot
-from src.ui.components import trigger_sheets_sync_ui
+from src.ui.components import auto_sync_inventory_on_load, trigger_sheets_sync_ui
 from src.ui.session import page_context
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "membuka dashboard StockQu")
+auto_sync_inventory_on_load(repository, actor, "command_center")
 now_wib = datetime.now(ZoneInfo("Asia/Jakarta"))
 period = now_wib.strftime("%Y-%m")
 snapshot = load_dashboard_snapshot(repository, period)
