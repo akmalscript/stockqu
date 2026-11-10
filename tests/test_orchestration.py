@@ -108,6 +108,9 @@ class P4Repo:
     def fetch_approval_request(self, code):
         return self.requests.get(code)
 
+    def fetch_approval_requests(self):
+        return list(self.requests.values())
+
     # RPC decide_approval
     def decide_approval(self, d):
         for r in self.requests.values():
@@ -458,3 +461,17 @@ def test_concurrent_incoming_callbacks_do_not_overwrite_rows():
     assert {(row[0], row[1]) for row in sheet.cells.values() if row != INCOMING_HEADER} == {
         ("PO-1", "SKU-A"), ("PO-2", "SKU-B")
     }
+
+
+def test_manual_run_cancels_stale_pending_approvals():
+    repo = P4Repo()
+    rt, _ = runtime_with(repo)
+    _, out1 = start(rt)
+    code1 = out1["approval"]["approval_code"]
+    assert repo.requests[code1]["status"] == "pending"
+
+    # Trigger manual baru harus membatalkan approval pending lama agar budget tidak terkunci
+    job2, _ = rt.create_job("manual", "user:demo")
+    assert repo.requests[code1]["status"] == "rejected"
+    assert all(p["status"] == "rejected" for p in repo.pos.values())
+

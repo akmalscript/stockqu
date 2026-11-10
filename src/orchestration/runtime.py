@@ -5,6 +5,7 @@ UI memanggil Agent Service lewat HTTP (SRS-NF-16/18/28).
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,6 +20,8 @@ from src.orchestration.procurement_graph import (
 from src.services.auth import system_actor
 from src.services.n8n_client import N8nClient
 from src.utils.errors import safe_error
+
+log = logging.getLogger("stockqu.runtime")
 
 WIB = ZoneInfo("Asia/Jakarta")
 FINAL_JOB_STATUS = {
@@ -68,10 +71,31 @@ class ProcurementRuntime:
         self.sheets_factory = sheets_factory
 
     # ------------------------------------------------------------------ W1: cron / manual
+    def _cancel_stale_pending_approvals(self, new_run_id: str) -> None:
+        """Batalkan request approval sebelumnya yang masih pending agar budget tidak terkunci saat manual run baru."""
+        try:
+            reqs_fn = getattr(self.repo, "fetch_approval_requests", None)
+            pending = [r for r in reqs_fn() if r.get("status") == "pending"] if callable(reqs_fn) else []
+            for req in pending:
+                code = req.get("approval_code")
+                if code:
+                    apply_decision(self.repo, code, {
+                        "decision": "rejected",
+                        "via": "dashboard",
+                        "decision_ref": f"superseded:{new_run_id}:{code}",
+                        "decided_by": "system:manual-run-superseded",
+                        "approver_role": "manager",
+                        "note": f"Dibatalkan otomatis karena ada workflow manual baru ({new_run_id})",
+                    })
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Gagal membatalkan approval pending lama: %s", safe_error(exc))
+
     def create_job(self, trigger: str, requested_by: str, day: str | None = None) -> tuple[dict, bool]:
         day = day or datetime.now(WIB).strftime("%Y-%m-%d")
         job_key = f"daily:{day}" if trigger == "cron" else f"manual:{uuid.uuid4().hex[:12]}"
         run_id = f"WF-{day.replace('-', '')}-{uuid.uuid4().hex[:6].upper()}"
+        if trigger == "manual":
+            self._cancel_stale_pending_approvals(run_id)
         return self.repo.create_workflow_job({
             "job_key": job_key, "trigger": trigger, "run_id": run_id, "status": "running",
             "requested_by": requested_by, "started_at": _now(),
