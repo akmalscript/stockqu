@@ -28,17 +28,150 @@ LOGO_PATH = str(Path(__file__).resolve().parent / "assets" / "StockQu Logo.png")
 st.set_page_config(page_title="StockQu", page_icon=LOGO_PATH, layout="wide")
 st.logo(LOGO_PATH, size="large")
 
+# ── Loading overlay: spinner di tengah halaman saat script running ──
+# Pakai CSS selector [data-test-script-state="running"] agar overlay
+# otomatis muncul/hilang sesuai status rerun Streamlit (termasuk navigasi).
+st.markdown("""
+<style>
+/* Sembunyikan status widget bawaan Streamlit (ikon running kanan atas) */
+[data-testid="stStatusWidget"] {
+    display: none !important;
+}
+
+/* Loading overlay: tersembunyi secara default */
+#stockqu-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.88);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+/* Tampilkan overlay saat Streamlit sedang running */
+[data-test-script-state="running"] #stockqu-loading-overlay {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.stockqu-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid #EFF4F1;
+    border-top: 4px solid #0E7C61;
+    border-radius: 50%;
+    animation: stockqu-spin 0.8s linear infinite;
+}
+@keyframes stockqu-spin {
+    to { transform: rotate(360deg); }
+}
+.stockqu-loading-text {
+    margin-top: 14px;
+    font-family: "Source Sans Pro", "Segoe UI", sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #1E2A44;
+    letter-spacing: 0.02em;
+}
+</style>
+<div id="stockqu-loading-overlay">
+    <div class="stockqu-spinner"></div>
+    <div class="stockqu-loading-text">Memuat StockQu…</div>
+</div>
+""", unsafe_allow_html=True)
+
 st.markdown(
     """
     <style>
-    /* Kurangi jarak di atas judul StockQu dan judul di semua halaman */
-    .block-container, [data-testid="stMainBlockContainer"], .main .block-container {
-        padding-top: 1.5rem !important;
+    /* Perbesar ukuran logo di pojok kiri atas */
+    [data-testid="stLogo"],
+    img[data-testid="stLogo"],
+    .stLogo {
+        height: 52px !important;
+        max-height: 56px !important;
+        width: auto !important;
+        max-width: 240px !important;
+        object-fit: contain !important;
+    }
+
+    [data-testid="stLogoLink"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        height: 100% !important;
+    }
+
+    [data-testid="stHeader"],
+    .stAppHeader {
+        height: 4.5rem !important;
+    }
+
+    /* Atur jarak agar konten pas di bawah header Streamlit */
+    .block-container, [data-testid="stMainBlockContainer"], .main .block-container, div.stMainBlockContainer {
+        padding-top: 2.5rem !important;
         padding-bottom: 2rem !important;
     }
     h1:first-child, .main h1:first-child, [data-testid="stHeading"]:first-child {
         padding-top: 0 !important;
-        margin-top: -0.5rem !important;
+        margin-top: 0 !important;
+    }
+
+    /* Tombol buka/tutup (collapse/expand) sidebar selalu terlihat tanpa harus hover */
+    [data-testid="stSidebarCollapseButton"],
+    div[data-testid="stSidebarCollapseButton"],
+    button[data-testid="stSidebarCollapseButton"],
+    [data-testid="stExpandSidebarButton"],
+    div[data-testid="stExpandSidebarButton"],
+    button[data-testid="stExpandSidebarButton"],
+    [data-testid="collapsedControl"],
+    div[data-testid="collapsedControl"],
+    button[data-testid="collapsedControl"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+        display: inline-flex !important;
+    }
+
+    [data-testid="stSidebarCollapseButton"] button,
+    [data-testid="stExpandSidebarButton"] button,
+    [data-testid="collapsedControl"] button {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    /* Layout sidebar lebih kompak agar tombol logout selalu terlihat */
+    [data-testid="stSidebarNav"] {
+        padding-top: 0.25rem !important;
+        padding-bottom: 0.25rem !important;
+    }
+    [data-testid="stSidebarNav"] li {
+        margin-bottom: 0.1rem !important;
+    }
+    [data-testid="stSidebarNav"] a {
+        padding-top: 0.25rem !important;
+        padding-bottom: 0.25rem !important;
+    }
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+
+    /* Warna teks brand StockQu di judul: Stock (hitam) dan Qu (hijau tua #1e7e5c) */
+    h1,
+    h1 > span,
+    h1 span:not(.stMarkdownColoredText) {
+        color: #000000 !important;
+    }
+
+    h1 span.stMarkdownColoredText,
+    h1 .stMarkdownColoredText,
+    h1 span[style*="color"] {
+        color: #1e7e5c !important;
     }
     </style>
     """,

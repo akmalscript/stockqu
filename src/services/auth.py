@@ -236,50 +236,137 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
         try:
             actor, refreshed, client = restore_session(tokens)
             st.session_state[state_key] = refreshed
-            st.query_params[param_key] = serialize_session(refreshed)
+            token_str = serialize_session(refreshed)
+            st.query_params[param_key] = token_str
+            st.html(f"<script>try {{ localStorage.setItem('stockqu_auth', '{token_str}'); }} catch(e) {{}}</script>")
         except Exception:  # noqa: BLE001 - session invalid harus kembali ke login
             st.session_state.pop(state_key, None)
             st.query_params.pop(param_key, None)
+            st.html("<script>try { localStorage.removeItem('stockqu_auth'); } catch(e) {}</script>")
 
     if actor is None:
-        st.title("Login StockQu")
-        st.caption("Gunakan akun Supabase Auth yang sudah diberi role StockQu oleh admin.")
-        with st.form("stockqu_login"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login", type="primary")
-        if submitted:
-            try:
-                actor, new_tokens, client = sign_in(email.strip(), password)
-                st.session_state[state_key] = new_tokens
-                st.query_params[param_key] = serialize_session(new_tokens)
-                st.rerun()
-            except (AuthenticationRequired, AuthorizationDenied) as exc:
-                st.error(str(exc))
-            except Exception:  # noqa: BLE001 - jangan tampilkan exception provider mentah
-                st.error("Login gagal. Periksa kredensial atau konfigurasi Supabase.")
+        st.html(
+            """
+            <style>
+            /* Sembunyikan sidebar panel di halaman login, tapi pertahankan header + logo */
+            [data-testid="stSidebar"] {
+                display: none !important;
+                width: 0 !important;
+                min-width: 0 !important;
+            }
+            /* Sembunyikan tombol expand sidebar (sidebar kosong di login) */
+            [data-testid="stSidebarCollapseButton"],
+            [data-testid="stExpandSidebarButton"] {
+                display: none !important;
+            }
+            /* Pastikan konten utama full-width tanpa margin sidebar */
+            [data-testid="stAppViewContainer"],
+            .main,
+            [data-testid="stMain"] {
+                margin-left: 0 !important;
+            }
+            </style>
+            <script>
+            (function() {
+                try {
+                    const saved = localStorage.getItem('stockqu_auth');
+                    if (saved && !window.location.search.includes('_auth=')) {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('_auth', saved);
+                        window.location.replace(url.toString());
+                    }
+                } catch (e) {}
+            })();
+            </script>
+            """
+        )
+        st.markdown("<div style='height: 3rem;'></div>", unsafe_allow_html=True)
+        _, col_login, _ = st.columns([1, 1.2, 1])
+        with col_login:
+            with st.container(border=True):
+                st.markdown(
+                    """
+                    <style>
+                    .login-heading {
+                        font-size: 2.5rem !important;
+                        font-weight: 700 !important;
+                        line-height: 1.25 !important;
+                        color: #000000 !important;
+                        margin-top: 0 !important;
+                        margin-bottom: 0.25rem !important;
+                        text-align: center !important;
+                    }
+                    .login-heading-stock {
+                        color: #000000 !important;
+                    }
+                    .login-heading-qu {
+                        color: #1e7e5c !important;
+                    }
+                    </style>
+                    <div class="login-heading" style="color: #000000 !important; font-size: 1.75rem; font-weight: 700; margin-top: 0; margin-bottom: 0.25rem; text-align: center;">
+                        <span class="login-heading-stock" style="color: #000000 !important;">Stock</span><span class="login-heading-qu" style="color: #1e7e5c !important;">Qu</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    "<p style='text-align: center; font-size: 0.85rem; color: rgba(49,51,63,0.6); "
+                    "margin-bottom: 0;'>"
+                    "Silahkan Masuk</p>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+                with st.form("stockqu_login"):
+                    email = st.text_input("Email", placeholder="admin@stockqu.com")
+                    password = st.text_input("Password", type="password", placeholder="••••••••")
+                    submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
+                if submitted:
+                    try:
+                        actor, new_tokens, client = sign_in(email.strip(), password)
+                        token_str = serialize_session(new_tokens)
+                        st.session_state[state_key] = new_tokens
+                        st.query_params[param_key] = token_str
+                        st.html(f"<script>try {{ localStorage.setItem('stockqu_auth', '{token_str}'); }} catch(e) {{}}</script>")
+                        st.rerun()
+                    except (AuthenticationRequired, AuthorizationDenied) as exc:
+                        st.error(str(exc))
+                    except Exception:  # noqa: BLE001 - jangan tampilkan exception provider mentah
+                        st.error("Login gagal. Periksa kredensial atau konfigurasi Supabase.")
         st.stop()
 
     try:
         authorize(actor, allowed_roles, action)
     except AuthorizationDenied as exc:
         st.error(str(exc))
-        if st.button("Logout"):
+        if st.button("Logout", icon=":material/logout:"):
             st.session_state.pop(state_key, None)
             st.query_params.pop(param_key, None)
+            st.html("<script>try { localStorage.removeItem('stockqu_auth'); } catch(e) {}</script>")
             st.rerun()
         st.stop()
 
     with st.sidebar:
-        st.caption(f"{actor.email or actor.user_id} · {actor.role}")
-        if st.button("Logout", key=f"logout-{action}"):
-            st.session_state.pop(state_key, None)
-            st.session_state.pop("stockqu_actor", None)
-            st.session_state.pop("stockqu_user_client", None)
-            st.query_params.pop(param_key, None)
-            try:
-                client.auth.sign_out()
-            except Exception:  # noqa: BLE001 - session lokal tetap dihapus
-                client = None
-            st.rerun()
+        st.divider()
+        col_user, col_logout = st.columns([2.2, 1.3], vertical_alignment="center")
+        with col_user:
+            st.markdown(
+                f"<div style='font-size: 0.78rem; font-weight: 600; color: #1E2A44; "
+                f"overflow: hidden; text-overflow: ellipsis; white-space: nowrap;' "
+                f"title='{actor.email or actor.user_id}'>{actor.email or actor.user_id}</div>"
+                f"<div style='font-size: 0.7rem; color: #64748b;'>{actor.role}</div>",
+                unsafe_allow_html=True,
+            )
+        with col_logout:
+            if st.button("Logout", key=f"logout-{action}", icon=":material/logout:", use_container_width=True):
+                st.session_state.pop(state_key, None)
+                st.session_state.pop("stockqu_actor", None)
+                st.session_state.pop("stockqu_user_client", None)
+                st.query_params.pop(param_key, None)
+                st.html("<script>try { localStorage.removeItem('stockqu_auth'); } catch(e) {}</script>")
+                try:
+                    if client:
+                        client.auth.sign_out()
+                except Exception:  # noqa: BLE001 - session lokal tetap dihapus
+                    client = None
+                st.rerun()
     return actor, client

@@ -282,17 +282,29 @@ div[role="tabpanel"] [data-testid="stPageLink"] a::after {
     color: #1E2A44 !important;
 }
 
-/* Judul StockQu di command center berwarna hitam */
+/* Judul StockQu di command center: Stock (hitam) dan Qu (hijau tua) */
+h1 {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+}
+
 h1,
-h1 span {
+h1 > span,
+h1 span:not(.stMarkdownColoredText) {
     color: #000000 !important;
+}
+
+h1 span.stMarkdownColoredText,
+h1 .stMarkdownColoredText,
+h1 span[style*="color"] {
+    color: #1e7e5c !important;
 }
 </style>
 """
 
 
 def main() -> None:
-    st.title("StockQu")
+    st.title("Stock:green[Qu]")
     st.html(CARD_LINK_STYLE)
 
     latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None

@@ -25,14 +25,14 @@ def remember(actor: ActorContext, client) -> None:
 
 COMPACT_TOP_CSS = """
 <style>
-/* Kurangi jarak di atas judul di semua halaman */
-.block-container, [data-testid="stMainBlockContainer"], .main .block-container {
-    padding-top: 1.5rem !important;
+/* Jarak pas di atas judul di semua halaman */
+.block-container, [data-testid="stMainBlockContainer"], .main .block-container, div.stMainBlockContainer {
+    padding-top: 2.5rem !important;
     padding-bottom: 2rem !important;
 }
 h1:first-child, .main h1:first-child, [data-testid="stHeading"]:first-child {
     padding-top: 0 !important;
-    margin-top: -0.5rem !important;
+    margin-top: 0 !important;
 }
 </style>
 """
