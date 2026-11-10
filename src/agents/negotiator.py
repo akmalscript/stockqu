@@ -359,7 +359,9 @@ class NegotiatorAgent:
         g.add_edge("draft_documents", "validate")
         g.add_edge("validate", "persist")
         g.add_edge("persist", END)
-        return g.compile()
+        # Graph orkestrator menyimpan checkpoint ringkas untuk human-in-the-loop;
+        # detail agent disimpan di tabel domain dan tidak mewarisi checkpointer.
+        return g.compile(checkpointer=False)
 
     def run(self, purchaser_run_id: str | None = None, run_id: str | None = None, as_of: date | None = None) -> dict:
         authorize(self.actor, NEGOTIATOR_RUN_ROLES, "menjalankan Agent Negotiator")
