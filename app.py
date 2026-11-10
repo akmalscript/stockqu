@@ -7,6 +7,8 @@ Jalankan:  streamlit run app.py
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import streamlit as st
 
 from src.services.auth import (
@@ -21,7 +23,10 @@ from src.services.deployment import (
 )
 from src.ui.session import remember
 
-st.set_page_config(page_title="StockQu", page_icon=":material/inventory_2:", layout="wide")
+LOGO_PATH = str(Path(__file__).resolve().parent / "StockQu Geometric Cube Logo.png")
+
+st.set_page_config(page_title="StockQu", page_icon=LOGO_PATH, layout="wide")
+st.logo(LOGO_PATH, size="large")
 
 st.markdown(
     """
@@ -34,6 +39,11 @@ st.markdown(
     h1:first-child, .main h1:first-child, [data-testid="stHeading"]:first-child {
         padding-top: 0 !important;
         margin-top: -0.5rem !important;
+    }
+    /* Warna hijau gelap untuk Qu pada judul StockQu */
+    [data-testid="stHeading"] span,
+    h1 span {
+        color: #1e7e5c !important;
     }
     </style>
     """,

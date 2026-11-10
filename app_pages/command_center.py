@@ -281,12 +281,18 @@ div[role="tabpanel"] [data-testid="stPageLink"] a::after {
     font-weight: 600 !important;
     color: #1E2A44 !important;
 }
+
+/* Warna hijau gelap untuk Qu pada judul StockQu */
+[data-testid="stHeading"] span,
+h1 span {
+    color: #1e7e5c !important;
+}
 </style>
 """
 
 
 def main() -> None:
-    st.title("StockQu")
+    st.title("Stock:green[Qu]")
     st.html(CARD_LINK_STYLE)
 
     latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None
