@@ -120,13 +120,13 @@ def render_reason_trace(item: dict, label: str) -> None:
             )
 
 
-def nav_link(path: str, label: str, icon: str) -> None:
+def nav_link(path: str, label: str, icon: str, width: str = "content") -> None:
     """Tautan hanya untuk halaman yang ada di menu role ini (lihat app.py)."""
     from src.services.auth import PURCHASER_VIEW_ROLES
 
     if path.endswith(("rencana.py", "perbandingan.py")) and actor.role not in PURCHASER_VIEW_ROLES:
         return
-    st.page_link(path, label=label, icon=icon)
+    st.page_link(path, label=label, icon=icon, width=width)
 
 
 WORKFLOW_STAGES = (
@@ -225,15 +225,76 @@ def main() -> None:
     )
 
     with tabs[0]:
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"],
+            div[data-testid="stTabContent"] div.stPageLink {
+                width: 100% !important;
+            }
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"],
+            div[data-testid="stTabContent"] div.stPageLink a {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: flex-start !important;
+                width: 100% !important;
+                gap: 0.6rem !important;
+                font-weight: 600 !important;
+                line-height: 1.2 !important;
+                padding: 0.55rem 1rem !important;
+                border-radius: 8px !important;
+                cursor: pointer !important;
+                text-decoration: none !important;
+                background: #fff !important;
+                border: 1px solid #cfd8d3 !important;
+                box-shadow: 0 1px 3px rgba(30, 42, 59, 0.12) !important;
+                box-sizing: border-box !important;
+                margin-top: 0.25rem !important;
+                margin-bottom: 0.5rem !important;
+                transition: background 0.15s, box-shadow 0.15s, transform 0.1s, border-color 0.15s !important;
+            }
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]:hover,
+            div[data-testid="stTabContent"] div.stPageLink a:hover {
+                border-color: #1b7f5c !important;
+                box-shadow: 0 2px 6px rgba(27, 127, 92, 0.25) !important;
+                background: #fff !important;
+            }
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]:active,
+            div[data-testid="stTabContent"] div.stPageLink a:active {
+                transform: translateY(1px) !important;
+            }
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]::after,
+            div[data-testid="stTabContent"] div.stPageLink a::after {
+                content: "" !important;
+                margin-left: auto !important;
+                width: 18px !important;
+                height: 18px !important;
+                min-width: 18px !important;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b7f5c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 18 15 12 9 6'%3E%3C/polyline%3E%3C/svg%3E") !important;
+                background-repeat: no-repeat !important;
+                background-position: center !important;
+                background-size: 18px 18px !important;
+            }
+            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"] span,
+            div[data-testid="stTabContent"] div.stPageLink a span {
+                color: #1E2A44 !important;
+                font-weight: 600 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         nav_link(
             "app_pages/prediksi.py",
             label="Buka detail Prediksi & Risiko",
             icon=":material/trending_down:",
+            width="stretch",
         )
         nav_link(
             "app_pages/rencana.py",
             label="Buka detail Rencana Pembelian",
             icon=":material/account_balance_wallet:",
+            width="stretch",
         )
 
         risk_rows = [
@@ -466,6 +527,7 @@ def main() -> None:
             "app_pages/rencana.py",
             label="Buka rencana pembelian dan laporan lengkap",
             icon=":material/account_balance_wallet:",
+            width="stretch",
         )
 
     if snapshot.issues:
