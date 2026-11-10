@@ -218,21 +218,24 @@ def whatsapp_reply(req: WhatsAppReply) -> dict:
 
 
 def _send_fonnte_reply(target: str, message: str, inboxid: str = "") -> None:
-    token = get_setting("FONNTE_TOKEN") or "mMae5qcWpTCYkh5HPMrV"
+    token = get_setting("FONNTE_TOKEN")
     if not token:
-        log.warning("FONNTE_TOKEN belum dikonfigurasi, balasan WA tidak dikirim")
+        log.warning("FONNTE_TOKEN belum dikonfigurasi, balasan WA tidak dikirim ke %s", target)
         return
     url = "https://api.fonnte.com/send"
-    payload = {"target": target.removeprefix("+"), "message": message}
+    # Fonnte membutuhkan nomor tanpa prefix '+'; removeprefix memastikan formatnya benar
+    clean_target = target.removeprefix("+")
+    payload = {"target": clean_target, "message": message}
     if inboxid:
         payload["inboxid"] = inboxid
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Authorization": token})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            log.info("Balasan Fonnte terkirim ke %s (status %s)", target, resp.status)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp_body = resp.read().decode("utf-8", errors="replace")
+            log.info("Balasan Fonnte terkirim ke %s (status %s): %s", clean_target, resp.status, resp_body[:200])
     except Exception as exc:  # noqa: BLE001
-        log.error("Gagal mengirim balasan Fonnte ke %s: %s", target, safe_error(exc))
+        log.error("Gagal mengirim balasan Fonnte ke %s: %s", clean_target, safe_error(exc))
 
 
 @app.api_route("/webhooks/fonnte-reply", methods=["GET", "POST"])
@@ -266,24 +269,43 @@ async def fonnte_reply(request: Request) -> dict:
 
     log.info("Fonnte webhook masuk: %s", data)
 
+    # Fonnte mengirim pesan keluar kita sendiri juga sebagai webhook; abaikan jika
+    # field 'status' ada (menandakan delivery report, bukan pesan masuk baru)
+    if data.get("status") is not None and not data.get("message"):
+        log.info("Fonnte delivery report diabaikan: status=%s", data.get("status"))
+        return {"status": "ignored", "detail": "delivery report"}
+
     sender = str(data.get("sender") or data.get("from") or data.get("From") or "").strip()
     body = str(data.get("message") or data.get("body") or data.get("Body") or data.get("text") or "").strip()
     inboxid = str(data.get("inboxid") or data.get("id") or "")
+    device = str(data.get("device") or "")
+
+    # Abaikan pesan dari device kita sendiri (echo dari pesan keluar)
+    if sender and device and sender == device:
+        log.info("Fonnte echo dari device sendiri diabaikan: sender=%s", sender)
+        return {"status": "ignored", "detail": "pesan dari device sendiri"}
 
     if not sender or not body:
+        log.warning("Fonnte webhook tanpa sender/body: sender=%r body=%r data=%s", sender, body, data)
         return {"status": "ignored", "detail": "sender atau message kosong"}
+
+    log.info("Fonnte pesan masuk: sender=%s body=%r inboxid=%s", sender, body, inboxid)
 
     try:
         phone = require_whitelisted(sender)
         parsed = parse_reply(body)
     except ApprovalRejected as exc:
         reply_msg = f"Tidak diproses: {exc}"
+        log.warning("Fonnte approval ditolak: sender=%s reason=%s", sender, exc)
         _send_fonnte_reply(sender, reply_msg, inboxid)
         return {"status": False, "reply": reply_msg}
     except Exception as exc:  # noqa: BLE001
         reply_msg = f"Format balasan tidak dikenal: {safe_error(exc)}"
+        log.warning("Fonnte parse gagal: sender=%s error=%s", sender, safe_error(exc))
         _send_fonnte_reply(sender, reply_msg, inboxid)
         return {"status": False, "reply": reply_msg}
+
+    log.info("Fonnte approval valid: code=%s decision=%s by=%s", parsed.approval_code, parsed.decision, phone)
 
     try:
         res = runtime().submit_decision(parsed.approval_code, {
@@ -294,9 +316,11 @@ async def fonnte_reply(request: Request) -> dict:
             "approver_role": "manager_whatsapp",
         })
         reply_msg = res["reply"]
+        log.info("Fonnte approval diproses: code=%s status=%s reply=%s", parsed.approval_code, res["status"], reply_msg)
     except Exception as exc:  # noqa: BLE001 - mis. sudah disetujui sebelumnya
         msg = "sudah diputuskan sebelumnya" if "already decided" in str(exc) else f"gagal ({safe_error(exc)})"
         reply_msg = f"{parsed.approval_code} {msg}."
+        log.error("Fonnte submit_decision gagal: code=%s error=%s", parsed.approval_code, safe_error(exc))
 
     _send_fonnte_reply(sender, reply_msg, inboxid)
     return {"status": True, "reply": reply_msg}
