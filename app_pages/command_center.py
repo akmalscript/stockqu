@@ -203,24 +203,24 @@ def main() -> None:
         nav_link(
             "app_pages/prediksi.py",
             label="Jalankan Agent Analyst",
-            icon="📈",
+            icon=":material/trending_down:",
         )
         nav_link(
             "app_pages/rencana.py",
             label="Jalankan Agent Purchaser",
-            icon="🧾",
+            icon=":material/account_balance_wallet:",
         )
 
     workflow_status()
 
     tabs = st.tabs(
         [
-            "📊 Overview",
-            "🤖 Agent Run",
-            "🧠 Reason Trace",
-            "🏷️ Supplier Comparison",
-            "✅ Approval",
-            "📈 Enterprise Report",
+            "Overview",
+            "Agent Run",
+            "Reason Trace",
+            "Supplier Comparison",
+            "Approval",
+            "Enterprise Report",
         ]
     )
 
@@ -228,12 +228,12 @@ def main() -> None:
         nav_link(
             "app_pages/prediksi.py",
             label="Buka detail Prediksi & Risiko",
-            icon="📈",
+            icon=":material/trending_down:",
         )
         nav_link(
             "app_pages/rencana.py",
             label="Buka detail Rencana Pembelian",
-            icon="🧾",
+            icon=":material/account_balance_wallet:",
         )
 
         risk_rows = [
@@ -244,15 +244,10 @@ def main() -> None:
         urgent_count = sum(row.get("risk_level") == "URGENT" for row in risk_rows)
         risk_metric = f"{len(risk_rows)} item" if snapshot.forecasts else LABEL_NOT_FOUND
         urgent_metric = f"{urgent_count} item" if snapshot.forecasts else LABEL_NOT_FOUND
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3 = st.columns(3)
         c1.metric("Item berisiko (≤ 7 hari)", risk_metric)
         c2.metric("Item URGENT (≤ 4 hari)", urgent_metric)
         c3.metric("Sisa budget aktual", rupiah(budget_available))
-        c4.metric(
-            "Target deteksi → draft PO",
-            "15 menit",
-            help="Target demo pada SRS, bukan hasil ukur aktual",
-        )
 
         st.subheader("5 Item Prioritas")
 
@@ -470,7 +465,7 @@ def main() -> None:
         nav_link(
             "app_pages/rencana.py",
             label="Buka rencana pembelian dan laporan lengkap",
-            icon="📊",
+            icon=":material/account_balance_wallet:",
         )
 
     if snapshot.issues:
