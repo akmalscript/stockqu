@@ -257,7 +257,6 @@ def dispatch_po_emails(repo, notifier: N8nClient, po_ids: list[str]) -> list[dic
     from src.services.exports import po_pdf_bytes
 
     emails = repo.fetch_supplier_emails()
-    override = get_setting("PO_EMAIL_TEST_RECIPIENT")
     public_url = (get_setting("AGENT_SERVICE_PUBLIC_URL") or "").rstrip("/")
     try:
         is_dummy = repo.has_dummy_sales()
@@ -268,20 +267,18 @@ def dispatch_po_emails(repo, notifier: N8nClient, po_ids: list[str]) -> list[dic
         if po["status"] != "approved":
             results.append({"po_number": po["po_number"], "status": "blocked", "detail": f"status {po['status']} bukan approved"})
             continue
+        if is_dummy:
+            results.append({"po_number": po["po_number"], "status": "blocked",
+                            "detail": "data penjualan masih DUMMY-SEED; ganti dengan data production"})
+            continue
         draft = po.get("draft") or {}
-        to = override or emails.get(str(po["supplier_id"]))
-        if not to:
+        if not emails.get(str(po["supplier_id"])):
             results.append({"po_number": po["po_number"], "status": "blocked",
                             "detail": f"email supplier {LABEL_NOT_FOUND}; isi suppliers.email"})
             continue
-        mail = (draft.get("emails") or {}).get("purchase_order") or {}
-        subject = mail.get("subject", f"Purchase Order {po['po_number']} - StockQu")
-        if override:
-            subject = f"[TEST untuk {draft.get('supplier_name', '-')}] {subject}"
         r = notifier.post(PO_EMAIL, {
             "event": "po_email", "idempotency_key": f"{po['po_number']}:email",
-            "po_id": po["id"], "po_number": po["po_number"], "to": to, "subject": subject,
-            "body": mail.get("body", ""),
+            "po_id": po["id"], "po_number": po["po_number"],
             "pdf_base64": base64.b64encode(po_pdf_bytes({**draft, "status": "approved",
                                                           "approval_status": f"disetujui {po.get('approval_code')}"},
                                                          is_dummy)).decode(),

@@ -33,7 +33,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { p_po_id: $('PO approved (dari Agent Service)').first().json.body.po_id, p_n8n_execution_id: $execution.id, p_recipient_email: $('PO approved (dari Agent Service)').first().json.body.to } }}",
+        "jsonBody": "={{ { p_po_id: $('PO approved (dari Agent Service)').first().json.body.po_id, p_n8n_execution_id: $execution.id, p_recipient_email: null } }}",
         "options": {
           "timeout": 20000
         }
@@ -185,7 +185,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const claim = $input.first().json;\nconst payload = $('PO approved (dari Agent Service)').first().json.body ?? {};\nif (String(payload.po_id ?? '') !== String(claim.po_id ?? '')) throw new Error('PO_ID_MISMATCH');\nif (String(payload.po_number ?? '') !== String(claim.po_number ?? '')) throw new Error('PO_NUMBER_MISMATCH');\nconst pdf = String(payload.pdf_base64 ?? '').trim();\nif (!pdf || pdf.length > 20000000 || !/^[A-Za-z0-9+/\\r\\n]+={0,2}$/.test(pdf)) throw new Error('PO_PDF_INVALID');\nconst subject = String(payload.subject ?? `Purchase Order ${claim.po_number} - StockQu`).replace(/[\\r\\n]+/g, ' ').trim().slice(0, 200);\nconst emailBody = String(payload.body ?? '').slice(0, 20000);\nreturn [{ json: { ...claim, subject, email_body: emailBody, pdf_base64: pdf, pdf_filename: `${claim.po_number}.pdf` } }];"
+        "jsCode": "const claim = $input.first().json;\nconst payload = $('PO approved (dari Agent Service)').first().json.body ?? {};\nif (String(payload.po_id ?? '') !== String(claim.po_id ?? '')) throw new Error('PO_ID_MISMATCH');\nif (String(payload.po_number ?? '') !== String(claim.po_number ?? '')) throw new Error('PO_NUMBER_MISMATCH');\nconst pdf = String(payload.pdf_base64 ?? '').trim();\nif (!pdf || pdf.length > 20000000 || !/^[A-Za-z0-9+/\\r\\n]+={0,2}$/.test(pdf)) throw new Error('PO_PDF_INVALID');\nconst rupiah = (value) => `Rp ${new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(Number(value ?? 0))}`;\nconst items = Array.isArray(claim.items) ? claim.items : [];\nconst itemLines = items.map((item) => `- ${item.sku} — ${item.name}: ${item.qty} x ${rupiah(item.unit_price)} = ${rupiah(item.line_total)}`);\nconst subject = `Purchase Order ${claim.po_number} - StockQu`;\nconst emailBody = [\n  `Yth. ${claim.supplier_name},`,\n  '',\n  `Terlampir Purchase Order ${claim.po_number} dari StockQu.`,\n  `Total: ${rupiah(claim.total_amount)}`,\n  `Tanggal pengiriman diminta: ${claim.requested_delivery_date}`,\n  '',\n  'Rincian pesanan:',\n  ...itemLines,\n  '',\n  'Mohon konfirmasi penerimaan dan jadwal pengiriman.',\n  '',\n  'Salam,',\n  'Tim Procurement StockQu',\n].join('\\n');\nreturn [{ json: { ...claim, subject, email_body: emailBody, pdf_base64: pdf, pdf_filename: `${claim.po_number}.pdf` } }];"
       },
       "id": "a1c49282-6102-4215-ad1e-af6bd8085af3",
       "name": "Prepare PO Payload",
@@ -516,7 +516,7 @@
     },
     {
       "parameters": {
-        "content": "## Setup wajib sebelum aktivasi\n\n1. Pilih credential **StockQu inbound** pada Webhook.\n2. Pilih **StockQu Supabase Service Role** pada tiga node RPC.\n3. Pilih **StockQu Gmail OAuth2** pada node Gmail.\n4. Pilih **StockQu Agent Service** pada callback W5.\n5. Terapkan migration outbox lalu test PO yang belum approved dan PO test yang sudah menerima OK WhatsApp.\n\nGmail tidak di-retry otomatis. Outbox dan RPC menjaga idempotensi; callback replay hanya memperbaiki sinkronisasi Sheets.",
+        "content": "## Setup wajib sebelum aktivasi\n\n1. Pilih credential **StockQu inbound** pada Webhook.\n2. Pilih **StockQu Supabase Service Role** pada tiga node RPC.\n3. Pilih **StockQu Gmail OAuth2** pada node Gmail.\n4. Pilih **StockQu Agent Service** pada callback W5.\n5. Terapkan migration outbox, validasi PO yang belum approved, lalu validasi satu PO approved dengan email resmi supplier.\n\nPenerima, subject, dan isi email berasal dari data Supabase. Gmail tidak di-retry otomatis. Outbox dan RPC menjaga idempotensi; callback replay hanya memperbaiki sinkronisasi Sheets.",
         "height": 380,
         "width": 460
       },

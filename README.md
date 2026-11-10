@@ -298,7 +298,8 @@ Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_
    `supabase/migrations/20261110110000_add_po_email_delivery_outbox.sql` untuk claim Gmail idempoten,
    audit provider message ID, dan pencegahan email ganda.
 3. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
-   Isi `suppliers.email` (atau `PO_EMAIL_TEST_RECIPIENT` untuk demo) supaya PO bisa dikirim.
+   Isi `suppliers.email` dengan alamat resmi supplier supaya PO bisa dikirim. Tidak ada override penerima demo,
+   dan pengiriman production diblokir selama `sales_history` masih memuat sumber `DUMMY-SEED`.
 4. Jalankan Agent Service di belakang HTTPS:
 
    ```bash

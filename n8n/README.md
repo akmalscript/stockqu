@@ -139,13 +139,13 @@ N8N_PO_EMAIL_WEBHOOK_URL=https://<n8n>/webhook/stockqu-po-email
 
 ## 8. Test aman sebelum aktivasi
 
-Lakukan test negatif lebih dulu dengan PO yang belum disetujui. Hasil yang benar:
-claim ditolak dan Gmail tidak terpanggil. Lalu test satu PO approved memakai
-`PO_EMAIL_TEST_RECIPIENT` yang menuju email internal.
+Lakukan validasi negatif lebih dulu dengan PO yang belum disetujui. Hasil yang benar:
+claim ditolak dan Gmail tidak terpanggil. Setelah itu validasi satu PO approved
+dengan alamat resmi pada `suppliers.email`.
 
 Verifikasi setelah test positif:
 
-- email dan PDF PO masuk ke alamat internal;
+- email dan PDF PO masuk ke alamat supplier dari Supabase;
 - `po_email_deliveries.status = 'sent'` dan `provider_message_id` terisi;
 - `purchase_orders.status = 'sent'`;
 - stok hanya bertambah pada `incoming_qty` cabang PO, bukan stok fisik;

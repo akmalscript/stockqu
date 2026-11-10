@@ -43,7 +43,6 @@ def env(monkeypatch):
     monkeypatch.setenv("N8N_TO_SERVICE_TOKEN", "svc-token")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "twilio-secret")
     monkeypatch.setenv("AGENT_SERVICE_PUBLIC_URL", "https://agent.example.test")
-    monkeypatch.delenv("PO_EMAIL_TEST_RECIPIENT", raising=False)
 
 
 class FakeNotifier:
@@ -150,7 +149,7 @@ class P4Repo:
         return [{**self.pos[i], "draft": self.pos[i]["draft"]} for i in ids]
 
     def has_dummy_sales(self):
-        return True
+        return False
 
     # jobs + logs
     def create_workflow_job(self, row):
@@ -257,6 +256,9 @@ def test_full_flow_waits_for_ok_then_emails_and_updates_stock():
     assert res["status"] == "approved" and "DISETUJUI" in res["reply"]
     emails = [c for c in notifier.calls if c[0] == "N8N_PO_EMAIL_WEBHOOK_URL"]
     assert [c[1]["po_number"] for c in emails] == ["PO-1"]  # PO-2 diblokir: email supplier kosong
+    assert "to" not in emails[0][1]
+    assert "subject" not in emails[0][1]
+    assert "body" not in emails[0][1]
     assert emails[0][1]["callback_url"] == "https://agent.example.test/purchase-orders/PO-1/sent"
     assert emails[0][1]["pdf_base64"]
     blocked = next(d for d in res["dispatch"] if d["po_number"] == "PO-2")
@@ -278,6 +280,21 @@ def test_reject_stops_without_email():
     assert res["status"] == "rejected"
     assert all(p["status"] == "rejected" for p in repo.pos.values())
     assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
+
+
+def test_dummy_sales_never_dispatches_production_email():
+    repo, notifier = P4Repo(), FakeNotifier()
+    repo.has_dummy_sales = lambda: True
+    rt, _ = runtime_with(repo, notifier)
+    _, out = start(rt)
+    res = rt.submit_decision(out["approval"]["approval_code"], {
+        "decision": "approved", "via": "whatsapp", "decided_by": MANAGER,
+        "decision_ref": "twilio:SM-DUMMY",
+    })
+
+    assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
+    assert all(d["status"] == "blocked" for d in res["dispatch"])
+    assert all("DUMMY-SEED" in d["detail"] for d in res["dispatch"])
 
 
 def test_replayed_webhook_is_idempotent():
