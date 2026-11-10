@@ -135,7 +135,7 @@ WORKFLOW_STAGES = (
 )
 
 
-@st.fragment(run_every="10s")
+@st.fragment
 def workflow_status() -> None:
     """Status agent per tahap dari workflow terakhir (F-31). Refresh tanpa rerun seluruh halaman."""
     from src.services import agent_service_client as agent_service
@@ -156,8 +156,11 @@ def workflow_status() -> None:
                 try:
                     res = agent_service.trigger_manual_run(actor.user_id)
                     st.toast(f"Workflow {res['run_id']}: {'sudah berjalan' if res.get('duplicate') else 'dimulai'}")
+                    st.rerun(scope="fragment")
                 except agent_service.AgentServiceUnavailable as exc:
                     st.error(str(exc))
+            if st.button("Segarkan", icon=":material/refresh:", width="content", help="Perbarui status workflow"):
+                st.rerun(scope="fragment")
         if not job:
             return
         summary = job.get("summary") or {}
@@ -175,6 +178,13 @@ def workflow_status() -> None:
                      icon=":material/mail:", color="green" if sent else "gray")
         if job.get("error_message"):
             st.error(f"Error: {job['error_message']}")
+
+        # Polling otomatis HANYA berjalan selama agent sedang bekerja (status running)
+        if job and job.get("status") == "running":
+            import time
+
+            time.sleep(2)
+            st.rerun(scope="fragment")
 
 
 CARD_LINK_STYLE = """
