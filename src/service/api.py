@@ -98,6 +98,10 @@ class SentCallback(BaseModel):
     email_message_id: str = Field(min_length=1, max_length=200)
 
 
+class InventorySyncRequest(BaseModel):
+    requested_by: str = Field(default="streamlit:user", max_length=120)
+
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict:
     supabase_status = "skipped"
@@ -122,6 +126,48 @@ def ready() -> dict:
     except DeploymentConfigurationError as exc:
         raise HTTPException(status_code=503, detail=f"Konfigurasi production belum siap: {exc}") from exc
     return {"status": "ready"}
+
+
+@app.post("/inventory/sync", dependencies=[Depends(require_token)])
+def inventory_sync(req: InventorySyncRequest | None = None) -> dict:
+    """Sinkronisasi dua arah stok Google Sheets <-> Supabase tanpa memicu procurement workflow."""
+    from datetime import datetime, timezone
+    from src.services.sheets_client import SheetsClient, sheets_configured
+    from src.services.supabase_client import SupabaseRepository, get_client
+    from src.services.inventory_sync import sync_inventory_two_way
+
+    if not sheets_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Google Sheets belum dikonfigurasi di Agent Service (GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON belum diisi)",
+        )
+    try:
+        client = get_client(write=True)
+        repo = SupabaseRepository(read_client=client)
+        sheets = SheetsClient()
+        actor_id = req.requested_by if req else "agent-service:inventory-sync"
+        run_id = f"agent-sync-{int(datetime.now(timezone.utc).timestamp())}"
+        report = sync_inventory_two_way(
+            repo,
+            sheets,
+            run_id=run_id,
+            write_enabled=True,
+            actor_id=actor_id,
+            actor_role="service_role",
+        )
+        return {
+            "status": report.status,
+            "run_id": report.run_id,
+            "rows_read": report.rows_read,
+            "rows_written_supabase": report.rows_written_supabase,
+            "rows_written_sheets": report.rows_written_sheets,
+            "rows_rejected": report.rows_rejected,
+            "conflicts": report.conflicts,
+            "errors": report.errors,
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.error("sync inventory endpoint gagal: %s", safe_error(exc))
+        raise HTTPException(status_code=500, detail=f"Gagal sinkronisasi inventori: {safe_error(exc)}") from exc
 
 
 @app.post("/workflows/daily-run", dependencies=[Depends(require_token)], status_code=202)

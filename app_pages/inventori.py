@@ -85,12 +85,23 @@ if sync_clicked:
             st.error(f"Gagal sinkronisasi: {safe_error(exc)}")
     elif agent_service_client.configured():
         try:
-            with st.spinner("Memicu workflow sinkronisasi stok via Agent Service..."):
-                res = agent_service_client.trigger_manual_run(actor.user_id)
+            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase via Agent Service..."):
+                res = agent_service_client.trigger_inventory_sync(actor.user_id)
                 load.clear()
-                st.success(f"Sinkronisasi telah dipicu di Agent Service (Run ID: `{res.get('run_id')}`). Silakan klik **Refresh** dalam beberapa saat.")
+                status = res.get("status", "success")
+                if status == "failed":
+                    st.error(f"Sinkronisasi via Agent Service gagal: {'; '.join(res.get('errors', []))}")
+                else:
+                    supa_rows = res.get("rows_written_supabase", 0)
+                    sheet_rows = res.get("rows_written_sheets", 0)
+                    msg = f"Sinkronisasi via Agent Service berhasil ({status}): {supa_rows} baris ke Supabase, {sheet_rows} ke Sheets."
+                    conflicts = res.get("conflicts", 0)
+                    if conflicts:
+                        msg += f" (Terdeteksi {conflicts} perbedaan stok yang diselaraskan)"
+                    st.success(msg)
+                    st.rerun()
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Gagal menghubungi Agent Service: {safe_error(exc)}")
+            st.error(f"Gagal sinkronisasi via Agent Service: {safe_error(exc)}")
     else:
         cfg = sheets_settings()
         missing = []
@@ -101,7 +112,7 @@ if sync_clicked:
         missing_str = ", ".join(missing) if missing else "GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON"
         st.warning(
             f"Google Sheets belum dikonfigurasi di environment ini ({missing_str}). "
-            "Tambahkan secret tersebut di Streamlit Cloud (App settings -> Secrets) atau aktifkan Agent Service."
+            "Tambahkan secret tersebut di Streamlit Cloud (App settings -> Secrets) atau konfigurasi di Agent Service."
         )
 
 

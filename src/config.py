@@ -41,6 +41,16 @@ LABEL_NOT_FOUND = "DATA TIDAK DITEMUKAN"
 SHEETS_STOCK_TAB_DEFAULT = "Stok"
 
 
+def extract_spreadsheet_id(value: str | None) -> str:
+    """Ekstrak ID spreadsheet dari ID mentah atau URL penuh Google Sheets."""
+    if not value:
+        return ""
+    val = str(value).strip()
+    if "/spreadsheets/d/" in val:
+        return val.split("/spreadsheets/d/")[1].split("/")[0]
+    return val
+
+
 def get_setting(name: str, default: str | None = None) -> str | None:
     """Ambil setting dari env, lalu dari Streamlit secrets (kalau berjalan di Streamlit)."""
     value = os.getenv(name)
@@ -75,10 +85,72 @@ def get_setting(name: str, default: str | None = None) -> str | None:
 
 
 def sheets_settings() -> dict:
+    raw_sheet_id = (
+        get_setting("GOOGLE_SHEETS_SPREADSHEET_ID")
+        or get_setting("SPREADSHEET_ID")
+        or get_setting("SPREADSHEET_URL")
+        or get_setting("GOOGLE_SHEETS_SPREADSHEET_URL")
+        or get_setting("GOOGLE_SHEETS_URL")
+        or get_setting("SHEETS_URL")
+        or get_setting("SPREADSHEET")
+    )
+    stock_tab = get_setting("GOOGLE_SHEETS_STOCK_TAB", SHEETS_STOCK_TAB_DEFAULT)
+    sa_file = get_setting("GOOGLE_SERVICE_ACCOUNT_FILE") or get_setting("SERVICE_ACCOUNT_FILE")
+    sa_json = get_setting("GOOGLE_SERVICE_ACCOUNT_JSON") or get_setting("SERVICE_ACCOUNT_JSON")
+
+    try:
+        import json
+        import streamlit as st
+
+        if hasattr(st, "secrets"):
+            if not raw_sheet_id:
+                for key in ("spreadsheet_id", "spreadsheet_url", "spreadsheet", "google_sheets_url", "sheet_url", "sheets_url"):
+                    if key in st.secrets and isinstance(st.secrets[key], str) and st.secrets[key].strip():
+                        raw_sheet_id = st.secrets[key]
+                        break
+            if not raw_sheet_id:
+                for sec_name in ("google_sheets", "sheets", "google", "gcp"):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                        sec = st.secrets[sec_name]
+                        for sub in ("spreadsheet_id", "spreadsheet_url", "spreadsheet", "sheet_url", "url", "id"):
+                            if sub in sec and isinstance(sec[sub], str) and sec[sub].strip():
+                                raw_sheet_id = sec[sub]
+                                break
+                        if raw_sheet_id:
+                            break
+            if not raw_sheet_id and "connections" in st.secrets and isinstance(st.secrets["connections"], dict):
+                gs = st.secrets["connections"].get("gsheets")
+                if isinstance(gs, dict):
+                    raw_sheet_id = gs.get("spreadsheet") or gs.get("spreadsheet_id") or gs.get("spreadsheet_url")
+
+            if stock_tab == SHEETS_STOCK_TAB_DEFAULT:
+                for sec_name in ("google_sheets", "sheets"):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                        sec = st.secrets[sec_name]
+                        if "stock_tab" in sec and isinstance(sec["stock_tab"], str):
+                            stock_tab = sec["stock_tab"]
+                            break
+
+            if not sa_file and not sa_json:
+                for sec_name in ("gcp_service_account", "google_service_account", "service_account", "gcp", "google_sheets", "sheets"):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                        sec = st.secrets[sec_name]
+                        if ("client_email" in sec and "private_key" in sec) or sec.get("type") == "service_account":
+                            sa_json = json.dumps(dict(sec))
+                            break
+                if not sa_json and "connections" in st.secrets and isinstance(st.secrets["connections"], dict):
+                    gs = st.secrets["connections"].get("gsheets")
+                    if isinstance(gs, dict):
+                        if ("client_email" in gs and "private_key" in gs) or gs.get("type") == "service_account":
+                            sa_json = json.dumps(dict(gs))
+    except Exception:  # noqa: BLE001
+        pass
+
+    clean_sheet_id = extract_spreadsheet_id(raw_sheet_id) if raw_sheet_id else None
+
     return {
-        "spreadsheet_id": get_setting("GOOGLE_SHEETS_SPREADSHEET_ID"),
-        "stock_tab": get_setting("GOOGLE_SHEETS_STOCK_TAB", SHEETS_STOCK_TAB_DEFAULT),
-        # Path file JSON service account ATAU isi JSON langsung (untuk Streamlit Cloud secrets)
-        "service_account_file": get_setting("GOOGLE_SERVICE_ACCOUNT_FILE"),
-        "service_account_json": get_setting("GOOGLE_SERVICE_ACCOUNT_JSON"),
+        "spreadsheet_id": clean_sheet_id,
+        "stock_tab": stock_tab or SHEETS_STOCK_TAB_DEFAULT,
+        "service_account_file": sa_file,
+        "service_account_json": sa_json,
     }

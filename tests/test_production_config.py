@@ -108,3 +108,71 @@ def test_agent_service_health_is_live_but_readiness_rejects_bad_production(monke
     response = client.get("/ready")
     assert response.status_code == 503
     assert "Konfigurasi production belum siap" in response.json()["detail"]
+
+
+def test_inventory_sync_endpoint_auth_and_behavior(monkeypatch):
+    from unittest.mock import MagicMock, patch
+    from src.services.inventory_sync import SyncReport
+
+    token = "test-token-" + "x" * 30
+    monkeypatch.setenv("N8N_TO_SERVICE_TOKEN", token)
+    client = TestClient(app)
+
+    # 1. Reject without token (401)
+    unauthorized = client.post("/inventory/sync", json={"requested_by": "test-user"})
+    assert unauthorized.status_code == 401
+
+    # 2. Reject with wrong token (401)
+    wrong_token = client.post("/inventory/sync", headers={"Authorization": "Bearer wrong-token"})
+    assert wrong_token.status_code == 401
+
+    # 3. Reject when sheets not configured (400)
+    with patch("src.services.sheets_client.sheets_configured", return_value=False):
+        res = client.post(
+            "/inventory/sync",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"requested_by": "test-user"},
+        )
+        assert res.status_code == 400
+        assert "Google Sheets belum dikonfigurasi" in res.json()["detail"]
+
+    # 4. Success when sheets configured (200 with report)
+    mock_report = SyncReport(
+        run_id="test-sync-1",
+        status="success",
+        rows_read=10,
+        rows_written_supabase=2,
+        rows_written_sheets=2,
+        conflicts=1,
+    )
+    with (
+        patch("src.services.sheets_client.sheets_configured", return_value=True),
+        patch("src.services.supabase_client.get_client", return_value=MagicMock()),
+        patch("src.services.supabase_client.SupabaseRepository", return_value=MagicMock()),
+        patch("src.services.sheets_client.SheetsClient", return_value=MagicMock()),
+        patch("src.services.inventory_sync.sync_inventory_two_way", return_value=mock_report),
+    ):
+        res = client.post(
+            "/inventory/sync",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"requested_by": "test-user"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["rows_read"] == 10
+        assert data["rows_written_supabase"] == 2
+        assert data["rows_written_sheets"] == 2
+        assert data["conflicts"] == 1
+
+
+def test_sheets_settings_url_extraction(monkeypatch):
+    from src.config import extract_spreadsheet_id, sheets_settings
+
+    full_url = "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit#gid=0"
+    assert extract_spreadsheet_id(full_url) == "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+
+    monkeypatch.setenv("SPREADSHEET_URL", full_url)
+    monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
+    cfg = sheets_settings()
+    assert cfg["spreadsheet_id"] == "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"

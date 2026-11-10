@@ -47,6 +47,10 @@ def trigger_manual_run(requested_by: str) -> dict:
     return _post("/workflows/daily-run", {"trigger": "manual", "requested_by": requested_by[:120]})
 
 
+def trigger_inventory_sync(requested_by: str) -> dict:
+    return _post("/inventory/sync", {"requested_by": requested_by[:120]})
+
+
 def submit_dashboard_decision(approval_code: str, decision: str, access_token: str, note: str | None) -> dict:
     return _post(f"/approvals/{approval_code}/dashboard-decision", {
         "decision": decision, "access_token": access_token, "nonce": uuid.uuid4().hex, "note": note or None,

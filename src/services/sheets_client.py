@@ -211,6 +211,8 @@ def _build_service():
     cfg = sheets_settings()
     if cfg["service_account_json"]:
         info = json.loads(cfg["service_account_json"])
+        if isinstance(info.get("private_key"), str) and "\\n" in info["private_key"]:
+            info["private_key"] = info["private_key"].replace("\\n", "\n")
         creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     elif cfg["service_account_file"]:
         creds = service_account.Credentials.from_service_account_file(cfg["service_account_file"], scopes=SCOPES)
