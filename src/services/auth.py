@@ -248,16 +248,29 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
         st.html(
             """
             <style>
-            /* Sembunyikan sidebar panel di halaman login, tapi pertahankan header + logo */
+            /* Sembunyikan panel sidebar di halaman login, tapi pertahankan header & logo */
             [data-testid="stSidebar"] {
                 display: none !important;
                 width: 0 !important;
                 min-width: 0 !important;
             }
-            /* Sembunyikan tombol expand sidebar (sidebar kosong di login) */
-            [data-testid="stSidebarCollapseButton"],
-            [data-testid="stExpandSidebarButton"] {
+            /* Sembunyikan hanya tombol panah expand/collapse, bukan logo */
+            [data-testid="collapsedControl"] button,
+            [data-testid="stExpandSidebarButton"],
+            [data-testid="stSidebarCollapseButton"] {
                 display: none !important;
+            }
+            /* Pastikan header dan logo di header tetap terlihat */
+            [data-testid="stHeader"],
+            .stAppHeader,
+            [data-testid="collapsedControl"],
+            [data-testid="stLogo"],
+            [data-testid="stHeaderLogo"],
+            [data-testid="stLogoLink"],
+            img.stLogo {
+                display: inline-flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
             }
             /* Pastikan konten utama full-width tanpa margin sidebar */
             [data-testid="stAppViewContainer"],
@@ -276,11 +289,21 @@ def require_streamlit_access(allowed_roles: Iterable[str], action: str):
                         window.location.replace(url.toString());
                     }
                 } catch (e) {}
+
+                // Jika sidebar masih berstatus terbuka di state Streamlit, collapse agar logo berpindah ke header
+                try {
+                    const doc = window.parent.document;
+                    const collapseBtn = doc.querySelector('[data-testid="stSidebarCollapseButton"] button')
+                        || doc.querySelector('button[data-testid="stSidebarCollapseButton"]');
+                    if (collapseBtn) {
+                        collapseBtn.click();
+                    }
+                } catch (e) {}
             })();
             </script>
             """
         )
-        st.markdown("<div style='height: 3rem;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 3.2rem;'></div>", unsafe_allow_html=True)
         _, col_login, _ = st.columns([1, 1.2, 1])
         with col_login:
             with st.container(border=True):

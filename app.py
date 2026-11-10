@@ -25,7 +25,16 @@ from src.ui.session import remember
 
 LOGO_PATH = str(Path(__file__).resolve().parent / "assets" / "StockQu Logo.png")
 
-st.set_page_config(page_title="StockQu", page_icon=LOGO_PATH, layout="wide")
+is_logged_in = bool(
+    st.session_state.get("stockqu_auth_tokens")
+    or st.query_params.get("_auth")
+)
+st.set_page_config(
+    page_title="StockQu",
+    page_icon=LOGO_PATH,
+    layout="wide",
+    initial_sidebar_state="expanded" if is_logged_in else "collapsed",
+)
 st.logo(LOGO_PATH, size="large")
 
 # ── Loading overlay: spinner di tengah halaman saat script running ──
