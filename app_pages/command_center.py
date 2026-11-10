@@ -15,6 +15,7 @@ from src.config import (
 )
 from src.services.auth import ALL_USER_ROLES
 from src.services.dashboard import load_dashboard_snapshot
+from src.ui.components import trigger_sheets_sync_ui
 from src.ui.session import page_context
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "membuka dashboard StockQu")
@@ -195,6 +196,10 @@ def main() -> None:
             )
         else:
             st.caption(f"Sinkron Sheets ↔ Supabase: {LABEL_NOT_FOUND}")
+        if st.button("🔄 Sinkron Sheets", key="cc_sidebar_sync", use_container_width=True,
+                     help="Tarik perubahan stok dari Google Sheets ke Supabase"):
+            if trigger_sheets_sync_ui(repository, actor):
+                st.rerun()
         st.divider()
         st.info(
             "Human-in-the-loop: tanpa balas OK di WhatsApp, PO tidak dikirim "
@@ -260,7 +265,15 @@ def main() -> None:
             help="Target demo pada SRS, bukan hasil ukur aktual",
         )
 
-        st.subheader("5 Item Prioritas")
+        col_hdr, col_sync = st.columns([3, 1], vertical_alignment="bottom")
+        with col_hdr:
+            st.subheader("5 Item Prioritas")
+        with col_sync:
+            if st.button("🔄 Sinkron Sheets", key="cc_overview_sync", use_container_width=True,
+                         help="Tarik perubahan stok dari Google Sheets ke Supabase"):
+                if trigger_sheets_sync_ui(repository, actor):
+                    st.rerun()
+
         if risk_rows:
             st.dataframe(
                 priority_frame(risk_rows[:5]),
@@ -268,8 +281,8 @@ def main() -> None:
                 width="stretch",
             )
             st.caption(
-                f"Run Analyst: `{snapshot.analyst_run_id}` · diurutkan berdasarkan "
-                "days-to-stockout terkecil, per SKU-cabang."
+                f"Run Analyst: `{snapshot.analyst_run_id}` · stok disinkronkan real-time dengan Google Sheets · "
+                "diurutkan berdasarkan days-to-stockout terkecil, per SKU-cabang."
             )
         elif snapshot.forecasts:
             st.success("Tidak ada SKU-cabang berisiko habis dalam 7 hari pada run Analyst terakhir.")

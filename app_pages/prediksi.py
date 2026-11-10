@@ -17,12 +17,14 @@ from src.services.auth import (
     ANALYST_RUN_ROLES,
     ANALYST_VIEW_ROLES,
 )
+from src.services.dashboard import sync_forecasts_with_inventory
 from src.services.supabase_client import has_write_key
 from src.services.work_admission import (
     WorkflowDeadlineExceeded,
     WorkRejected,
     work_admission,
 )
+from src.ui.components import trigger_sheets_sync_ui
 from src.ui.session import page_context
 from src.utils import formulas as F
 
@@ -91,10 +93,22 @@ with st.sidebar:
         except (WorkRejected, WorkflowDeadlineExceeded, PermissionError) as exc:
             st.error(str(exc))
 
+    st.divider()
+    if st.button("🔄 Sinkron Sheets", use_container_width=True,
+                 help="Tarik perubahan stok dari Google Sheets ke Supabase"):
+        if trigger_sheets_sync_ui(repository, actor):
+            st.rerun()
+
 # ------------------------------------------------------------------ load data
 try:
     products, branches = master()
     run_id, forecasts, logs = latest_run()
+    if forecasts:
+        try:
+            inv = repository.fetch_inventory()
+            forecasts = sync_forecasts_with_inventory(forecasts, inv, products, branches)
+        except Exception:  # noqa: BLE001
+            pass
 except Exception as exc:  # noqa: BLE001
     if "PGRST205" in str(exc):
         st.error(

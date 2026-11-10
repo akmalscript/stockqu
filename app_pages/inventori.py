@@ -10,8 +10,9 @@ import streamlit as st
 
 from src.config import LABEL_NOT_FOUND
 from src.services.auth import ALL_USER_ROLES
-from src.ui.components import dummy_banner, local_time
+from src.ui.components import dummy_banner, local_time, trigger_sheets_sync_ui
 from src.ui.session import page_context
+from src.utils import formulas as F
 from src.utils.errors import safe_error
 
 actor, user_client, repository = page_context(ALL_USER_ROLES, "melihat inventori")
@@ -52,71 +53,8 @@ if refresh_clicked:
     st.rerun()
 
 if sync_clicked:
-    from datetime import datetime, timezone
-    from src.config import sheets_settings
-    from src.services.sheets_client import SheetsClient, sheets_configured
-    from src.services.inventory_sync import sync_inventory_two_way
-    from src.services.supabase_client import has_write_key
-    from src.services import agent_service_client
-
-    if sheets_configured():
-        try:
-            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase..."):
-                sheets = SheetsClient()
-                can_write = has_write_key()
-                report = sync_inventory_two_way(
-                    repository,
-                    sheets,
-                    run_id=f"manual-sync-{int(datetime.now(timezone.utc).timestamp())}",
-                    write_enabled=can_write,
-                    actor_id=actor.user_id,
-                    actor_role=actor.role,
-                )
-                load.clear()
-                if report.status == "failed":
-                    st.error(f"Sinkronisasi gagal: {'; '.join(report.errors)}")
-                else:
-                    msg = f"Sinkronisasi berhasil ({report.status}): {report.rows_written_supabase} baris ke Supabase, {report.rows_written_sheets} ke Sheets."
-                    if report.conflicts:
-                        msg += f" (Terdeteksi {report.conflicts} perbedaan stok yang diselaraskan)"
-                    st.success(msg)
-                    st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Gagal sinkronisasi ({type(exc).__name__}): {exc}")
-    elif agent_service_client.configured():
-        try:
-            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase via Agent Service..."):
-                import importlib
-                importlib.reload(agent_service_client)
-                res = agent_service_client.trigger_inventory_sync(actor.user_id)
-                load.clear()
-                status = res.get("status", "success")
-                if status == "failed":
-                    st.error(f"Sinkronisasi via Agent Service gagal: {'; '.join(res.get('errors', []))}")
-                else:
-                    supa_rows = res.get("rows_written_supabase", 0)
-                    sheet_rows = res.get("rows_written_sheets", 0)
-                    msg = f"Sinkronisasi via Agent Service berhasil ({status}): {supa_rows} baris ke Supabase, {sheet_rows} ke Sheets."
-                    conflicts = res.get("conflicts", 0)
-                    if conflicts:
-                        msg += f" (Terdeteksi {conflicts} perbedaan stok yang diselaraskan)"
-                    st.success(msg)
-                    st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Gagal sinkronisasi via Agent Service ({type(exc).__name__}): {exc}")
-    else:
-        cfg = sheets_settings()
-        missing = []
-        if not cfg.get("spreadsheet_id"):
-            missing.append("GOOGLE_SHEETS_SPREADSHEET_ID")
-        if not (cfg.get("service_account_file") or cfg.get("service_account_json")):
-            missing.append("GOOGLE_SERVICE_ACCOUNT_JSON")
-        missing_str = ", ".join(missing) if missing else "GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON"
-        st.warning(
-            f"Google Sheets belum dikonfigurasi di environment ini ({missing_str}). "
-            "Tambahkan secret tersebut di Streamlit Cloud (App settings -> Secrets) atau konfigurasi di Agent Service."
-        )
-
+    if trigger_sheets_sync_ui(repository, actor, clear_cache_fn=load.clear):
+        st.rerun()
 
 try:
     data = load(repository, actor.user_id)
@@ -136,12 +74,32 @@ rows = []
 for inv in data["inventory"]:
     pid, bid = str(inv["product_id"]), str(inv["branch_id"])
     p, f = products.get(pid, {}), risk.get((pid, str(inv["branch_id"])), {})
+    current_stock = inv.get("stock_qty")
+    avg_daily = f.get("avg_daily_sales")
+    lead_time = p.get("lead_time_days")
+
+    if current_stock is not None and avg_daily is not None and float(avg_daily) > 0:
+        dts = round(F.days_to_stockout(float(current_stock), float(avg_daily)), 1)
+        risk_lvl = F.classify_risk(dts, int(lead_time) if lead_time is not None else None)
+    elif f.get("days_to_stockout") is not None:
+        dts = f.get("days_to_stockout")
+        risk_lvl = f.get("risk_level") or LABEL_NOT_FOUND
+    else:
+        dts = None
+        risk_lvl = LABEL_NOT_FOUND
+
     rows.append({
-        "Risiko": f.get("risk_level") or LABEL_NOT_FOUND, "SKU": p.get("sku", LABEL_NOT_FOUND),
-        "Nama": p.get("name", LABEL_NOT_FOUND), "Kategori": p.get("category") or "-",
-        "Cabang": branches.get(bid, LABEL_NOT_FOUND), "Stok fisik": inv.get("stock_qty"),
-        "In-transit": inv.get("incoming_qty"), "Days-to-stockout": f.get("days_to_stockout"),
-        "Lead time": p.get("lead_time_days"), "Margin %": p.get("margin"), "Turnover": p.get("turnover_rate"),
+        "Risiko": risk_lvl,
+        "SKU": p.get("sku", LABEL_NOT_FOUND),
+        "Nama": p.get("name", LABEL_NOT_FOUND),
+        "Kategori": p.get("category") or "-",
+        "Cabang": branches.get(bid, LABEL_NOT_FOUND),
+        "Stok fisik": current_stock,
+        "In-transit": inv.get("incoming_qty"),
+        "Days-to-stockout": dts,
+        "Lead time": lead_time,
+        "Margin %": p.get("margin"),
+        "Turnover": p.get("turnover_rate"),
         "Supplier kontrak": ", ".join(sorted(supplier_count.get(pid, []))) or LABEL_NOT_FOUND,
         "Update": local_time(inv.get("updated_at")),
     })

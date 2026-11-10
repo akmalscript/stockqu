@@ -209,8 +209,20 @@ def test_sheets_settings_handles_streamlit_attrdict_mapping(monkeypatch):
             "private_key": "-----BEGIN PRIVATE KEY-----\\ntest\\n-----END PRIVATE KEY-----\\n",
         }),
     }
-    monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
-    monkeypatch.delenv("SPREADSHEET_URL", raising=False)
+    for var in (
+        "GOOGLE_SHEETS_SPREADSHEET_ID",
+        "SPREADSHEET_ID",
+        "SPREADSHEET_URL",
+        "GOOGLE_SHEETS_SPREADSHEET_URL",
+        "GOOGLE_SHEETS_URL",
+        "SHEETS_URL",
+        "SPREADSHEET",
+        "GOOGLE_SERVICE_ACCOUNT_FILE",
+        "SERVICE_ACCOUNT_FILE",
+        "GOOGLE_SERVICE_ACCOUNT_JSON",
+        "SERVICE_ACCOUNT_JSON",
+    ):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(st, "secrets", fake_secrets)
     cfg = sheets_settings()
     assert cfg["spreadsheet_id"] == "abc12345"

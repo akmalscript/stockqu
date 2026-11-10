@@ -61,6 +61,82 @@ def _sort_forecast(row: dict) -> tuple[float, str, str]:
     return days, str(row.get("branch") or ""), str(row.get("sku") or "")
 
 
+def sync_forecasts_with_inventory(
+    forecasts: list[dict],
+    inventory: list[dict],
+    products: list[dict] | None = None,
+    branches: list[dict] | None = None,
+) -> list[dict]:
+    """Selaraskan stok fisik terkini dari tabel inventory ke data forecast Analyst.
+
+    Menghitung ulang days-to-stockout, kebutuhan restock, dan level risiko
+    berdasarkan stok real-time (hasil sinkron Google Sheets) dan laju penjualan harian.
+    """
+    from src.utils import formulas as F
+
+    prod_map: dict[str, dict] = {}
+    if products:
+        for p in products:
+            if "id" in p:
+                prod_map[str(p["id"])] = p
+            if p.get("sku"):
+                prod_map[str(p["sku"]).strip().upper()] = p
+
+    branch_map: dict[str, str] = {}
+    if branches:
+        for b in branches:
+            if "id" in b:
+                branch_map[str(b["id"])] = str(b.get("name") or "")
+            if b.get("name"):
+                branch_map[str(b["name"]).strip().lower()] = str(b.get("id"))
+
+    stock_map: dict[tuple[str, str], float] = {}
+    for r in inventory:
+        pid = str(r.get("product_id") or "")
+        bid = str(r.get("branch_id") or "")
+        sqty = r.get("stock_qty")
+        if sqty is not None:
+            val = float(sqty)
+            if pid and bid:
+                stock_map[(pid, bid)] = val
+            p_obj = prod_map.get(pid)
+            b_name = branch_map.get(bid) or str(r.get("branch") or "")
+            if p_obj and p_obj.get("sku") and b_name:
+                stock_map[(str(p_obj["sku"]).strip().upper(), b_name.strip().lower())] = val
+
+    synced = []
+    for row in forecasts:
+        item = dict(row)
+        pid = str(item.get("product_id") or "")
+        bid = str(item.get("branch_id") or "")
+        sku = str(item.get("sku") or "").strip().upper()
+        bname = str(item.get("branch") or "").strip().lower()
+
+        current_stock = stock_map.get((pid, bid))
+        if current_stock is None and sku and bname:
+            current_stock = stock_map.get((sku, bname))
+
+        if current_stock is not None:
+            item["stock_qty"] = current_stock
+            avg_daily = float(item.get("avg_daily_sales") or 0.0)
+            lead_time = int(
+                item.get("lead_time_days")
+                or (prod_map.get(pid, {}) if pid else {}).get("lead_time_days")
+                or 0
+            )
+            if avg_daily > 0:
+                dts = F.days_to_stockout(current_stock, avg_daily)
+                item["days_to_stockout"] = dts
+                item["restock_qty"] = F.restock_qty(avg_daily, lead_time, current_stock)
+                item["risk_level"] = F.classify_risk(dts, lead_time)
+            else:
+                item["days_to_stockout"] = math.inf
+                item["restock_qty"] = 0
+                item["risk_level"] = F.RISK_SAFE
+        synced.append(item)
+    return synced
+
+
 def load_dashboard_snapshot(repository, period: str) -> DashboardSnapshot:
     """Muat sumber dashboard secara bounded melalui repository dan pertahankan RLS."""
     snapshot = DashboardSnapshot(period=period)
@@ -103,6 +179,12 @@ def load_dashboard_snapshot(repository, period: str) -> DashboardSnapshot:
         if snapshot.analyst_run_id
         else []
     )
+    synced_forecasts = sync_forecasts_with_inventory(
+        raw_forecasts,
+        snapshot.inventory,
+        snapshot.products,
+        snapshot.branches,
+    )
     snapshot.forecasts = sorted(
         [
             {
@@ -111,7 +193,7 @@ def load_dashboard_snapshot(repository, period: str) -> DashboardSnapshot:
                 "product_name": product_map.get(str(row.get("product_id")), {}).get("name"),
                 "branch": branch_map.get(str(row.get("branch_id")), {}).get("name"),
             }
-            for row in raw_forecasts
+            for row in synced_forecasts
         ],
         key=_sort_forecast,
     )

@@ -12,6 +12,7 @@ from src.services.exports import (
     po_pdf_bytes,
     procurement_report_xlsx,
 )
+from src.services.dashboard import sync_forecasts_with_inventory
 from src.ui.components import dummy_banner, rupiah
 from src.ui.session import page_context
 from src.utils.errors import safe_error
@@ -71,6 +72,12 @@ with st.container(border=True):
     try:
         run_id = repository.latest_analyst_run_id()
         rows = repository.fetch_forecasts(run_id) if run_id else []
+        if rows:
+            try:
+                inv = repository.fetch_inventory()
+                rows = sync_forecasts_with_inventory(rows, inv, list(products.values()))
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as exc:  # noqa: BLE001
         rows, run_id = [], None
         st.caption(f"{LABEL_NOT_FOUND} ({safe_error(exc)})")

@@ -1,4 +1,4 @@
-from src.services.dashboard import load_dashboard_snapshot
+from src.services.dashboard import load_dashboard_snapshot, sync_forecasts_with_inventory
 
 
 class DashboardRepository:
@@ -109,3 +109,50 @@ def test_dashboard_does_not_invent_budget_when_row_is_missing():
     snapshot = load_dashboard_snapshot(repository, "2026-11")
 
     assert snapshot.budget is None
+
+
+def test_sync_forecasts_with_inventory_recalculates_dts_and_risk():
+    forecasts = [
+        {
+            "product_id": "p1",
+            "branch_id": "b1",
+            "stock_qty": 50.0,
+            "avg_daily_sales": 30.0,
+            "days_to_stockout": 1.67,
+            "risk_level": "URGENT",
+            "restock_qty": 130,
+        },
+        {
+            "product_id": "p2",
+            "branch_id": "b1",
+            "stock_qty": 120.0,
+            "avg_daily_sales": 24.0,
+            "days_to_stockout": 5.0,
+            "risk_level": "RISIKO",
+            "restock_qty": 48,
+        },
+    ]
+    # In inventory, SKU-1 stock changed to 150 (restocked), SKU-2 stock dropped to 48 (depleted)
+    inventory = [
+        {"product_id": "p1", "branch_id": "b1", "stock_qty": 150},
+        {"product_id": "p2", "branch_id": "b1", "stock_qty": 48},
+    ]
+    products = [
+        {"id": "p1", "sku": "SKU-1", "lead_time_days": 3},
+        {"id": "p2", "sku": "SKU-2", "lead_time_days": 4},
+    ]
+
+    synced = sync_forecasts_with_inventory(forecasts, inventory, products)
+
+    # p1: stock=150, avg=30 -> dts=5.0 -> RISIKO (no longer URGENT)
+    f1 = next(f for f in synced if f["product_id"] == "p1")
+    assert f1["stock_qty"] == 150.0
+    assert f1["days_to_stockout"] == 5.0
+    assert f1["risk_level"] == "RISIKO"
+
+    # p2: stock=48, avg=24 -> dts=2.0 -> URGENT (now URGENT)
+    f2 = next(f for f in synced if f["product_id"] == "p2")
+    assert f2["stock_qty"] == 48.0
+    assert f2["days_to_stockout"] == 2.0
+    assert f2["risk_level"] == "URGENT"
+

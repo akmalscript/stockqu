@@ -15,6 +15,7 @@ from src.config import LABEL_NOT_FOUND
 from src.services.analytics import compute_kpis, risk_by_branch
 from src.services.auth import ALL_USER_ROLES
 from src.services.budget import load_budget_snapshot
+from src.services.dashboard import sync_forecasts_with_inventory
 from src.ui.components import dummy_banner
 from src.ui.session import page_context
 from src.utils.errors import safe_error
@@ -35,9 +36,12 @@ def attempt(label, fn, default):
 
 
 run = attempt("analyst", repository.latest_analyst_run_id, None)
-forecasts = attempt("forecasts", lambda: repository.fetch_forecasts(run), []) if run else []
+raw_forecasts = attempt("forecasts", lambda: repository.fetch_forecasts(run), []) if run else []
 products = attempt("products", repository.fetch_products, [])
-branches = {str(b["id"]): b["name"] for b in attempt("branches", repository.fetch_branches, [])}
+branches_list = attempt("branches", repository.fetch_branches, [])
+branches = {str(b["id"]): b["name"] for b in branches_list}
+inventory = attempt("inventory", repository.fetch_inventory, [])
+forecasts = sync_forecasts_with_inventory(raw_forecasts, inventory, products, branches_list) if raw_forecasts else []
 contracts = attempt("contracts", repository.fetch_reference_contracts, [])
 budget = attempt("budget", lambda: load_budget_snapshot(repository, period).to_dict(), None)
 pos = attempt("purchase_orders", repository.fetch_recent_purchase_orders, [])

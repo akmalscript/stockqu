@@ -103,3 +103,87 @@ def reason_trace_panel(trace: dict, *, run_id: str | None = None, key: str = "")
         st.markdown("**Asumsi & kebijakan:**\n" + "\n".join(f"- {a}" for a in trace["assumptions"]))
     if run_id:
         open_execution_log(run_id, key=f"trace-log-{key}")
+
+
+def trigger_sheets_sync_ui(repository, actor, clear_cache_fn=None) -> bool:
+    """Jalankan sinkronisasi dua arah Google Sheets ↔ Supabase dari komponen UI.
+
+    Mengembalikan True jika sinkronisasi berhasil dan halaman perlu di-rerun.
+    """
+    from datetime import datetime, timezone
+    from src.config import sheets_configured, sheets_settings
+    from src.services import agent_service_client
+    from src.services.inventory_sync import sync_inventory_two_way
+    from src.services.sheets_client import SheetsClient
+    from src.services.supabase_client import has_write_key
+
+    if sheets_configured():
+        try:
+            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase..."):
+                sheets = SheetsClient()
+                can_write = has_write_key()
+                report = sync_inventory_two_way(
+                    repository,
+                    sheets,
+                    run_id=f"manual-sync-{int(datetime.now(timezone.utc).timestamp())}",
+                    write_enabled=can_write,
+                    actor_id=actor.user_id,
+                    actor_role=actor.role,
+                )
+                if clear_cache_fn:
+                    clear_cache_fn()
+                if report.status == "failed":
+                    st.error(f"Sinkronisasi gagal: {'; '.join(report.errors)}")
+                    return False
+                msg = (
+                    f"Sinkronisasi berhasil ({report.status}): "
+                    f"{report.rows_written_supabase} baris ke Supabase, "
+                    f"{report.rows_written_sheets} ke Sheets."
+                )
+                if report.conflicts:
+                    msg += f" (Terdeteksi {report.conflicts} perbedaan stok yang diselaraskan)"
+                st.success(msg)
+                return True
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Gagal sinkronisasi ({type(exc).__name__}): {exc}")
+            return False
+    elif agent_service_client.configured():
+        try:
+            with st.spinner("Menyinkronkan Google Sheets ↔ Supabase via Agent Service..."):
+                import importlib
+                importlib.reload(agent_service_client)
+                res = agent_service_client.trigger_inventory_sync(actor.user_id)
+                if clear_cache_fn:
+                    clear_cache_fn()
+                status = res.get("status", "success")
+                if status == "failed":
+                    st.error(f"Sinkronisasi via Agent Service gagal: {'; '.join(res.get('errors', []))}")
+                    return False
+                supa_rows = res.get("rows_written_supabase", 0)
+                sheet_rows = res.get("rows_written_sheets", 0)
+                msg = (
+                    f"Sinkronisasi via Agent Service berhasil ({status}): "
+                    f"{supa_rows} baris ke Supabase, {sheet_rows} ke Sheets."
+                )
+                conflicts = res.get("conflicts", 0)
+                if conflicts:
+                    msg += f" (Terdeteksi {conflicts} perbedaan stok yang diselaraskan)"
+                st.success(msg)
+                return True
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Gagal sinkronisasi via Agent Service ({type(exc).__name__}): {exc}")
+            return False
+    else:
+        cfg = sheets_settings()
+        missing = []
+        if not cfg.get("spreadsheet_id"):
+            missing.append("GOOGLE_SHEETS_SPREADSHEET_ID")
+        if not (cfg.get("service_account_file") or cfg.get("service_account_json")):
+            missing.append("GOOGLE_SERVICE_ACCOUNT_JSON")
+        missing_str = ", ".join(missing) if missing else "GOOGLE_SHEETS_SPREADSHEET_ID / GOOGLE_SERVICE_ACCOUNT_JSON"
+        st.warning(
+            f"Google Sheets belum dikonfigurasi di environment ini ({missing_str}). "
+            "Tambahkan secret tersebut di Streamlit Cloud (App settings -> Secrets) atau konfigurasi di Agent Service."
+        )
+        return False
+

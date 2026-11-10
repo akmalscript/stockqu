@@ -9,6 +9,7 @@ import streamlit as st
 
 from src.config import LABEL_NOT_FOUND
 from src.services.auth import ALL_USER_ROLES
+from src.services.dashboard import sync_forecasts_with_inventory
 from src.ui.components import days, dummy_banner, reason_trace_panel, rupiah
 from src.ui.session import page_context
 from src.utils.errors import safe_error
@@ -38,6 +39,12 @@ try:
     if agent == "Analyst":
         run_id = repository.latest_analyst_run_id()
         rows = repository.fetch_forecasts(run_id) if run_id else []
+        if rows:
+            try:
+                inv = repository.fetch_inventory()
+                rows = sync_forecasts_with_inventory(rows, inv, list(products.values()))
+            except Exception:  # noqa: BLE001
+                pass
         only_risk = st.toggle("Hanya SKU berisiko", value=True)
         if only_risk:
             rows = [r for r in rows if r.get("risk_level") in ("URGENT", "RISIKO")]
