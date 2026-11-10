@@ -105,6 +105,56 @@ Buka `http://localhost:5678` (atau dashboard n8n Cloud Anda). Panduan lengkap pe
 
 Status integrasi terakhir dan blocker sebelum demo end-to-end dicatat di [`docs/e2e-readiness-audit.md`](docs/e2e-readiness-audit.md). Jangan menyatakan demo penuh siap hanya berdasarkan unit test; cron, WhatsApp, approval, Gmail, dan update stok harus dibuktikan pada environment deployment yang sama.
 
+## Konfigurasi Production
+
+`localhost`, `host.docker.internal`, dan URL tunnel sementara hanya untuk
+development/demo lokal. Production memakai tiga process terpisah yang semuanya
+dapat saling menjangkau melalui HTTPS publik:
+
+```text
+Browser -> Streamlit HTTPS -> Agent Service HTTPS -> n8n HTTPS
+Twilio -------------------------------> n8n webhook HTTPS
+n8n ---------------------------------> Agent Service callback HTTPS
+Semua service -----------------------> Supabase cloud
+```
+
+1. **Streamlit Community Cloud:** salin hanya nilai dari
+   `.streamlit/secrets.toml.example` ke App settings -> Secrets. Jangan masukkan
+   service-role Supabase, database URL, atau credential Twilio ke process
+   Streamlit.
+2. **Agent Service:** salin `.env.production.example` ke secret manager platform
+   backend, ganti seluruh domain `*.invalid`, isi secret, lalu jalankan
+   `python -m scripts.run_agent_service`. Endpoint `/ready` hanya mengembalikan
+   `ready` setelah konfigurasi production valid.
+3. **n8n self-hosted:** salin `n8n/.env.production.example` menjadi file secret
+   di host, ganti domain publik, dan isi `N8N_ENCRYPTION_KEY` acak. Jalankan base
+   compose bersama override `n8n/docker-compose.prod.yml`. Reverse proxy harus
+   meneruskan domain n8n ke `127.0.0.1:5678`; `WEBHOOK_URL` wajib menunjuk origin
+   HTTPS publik n8n.
+4. Arahkan webhook inbound Twilio ke
+   `https://<domain-n8n>/webhook/stockqu-wa-inbound` dan gunakan URL production
+   yang ditampilkan n8n, bukan URL test.
+
+Contoh pemeriksaan setelah deployment:
+
+```bash
+curl --fail https://<domain-agent>/health
+curl --fail https://<domain-agent>/ready
+curl --fail https://<domain-n8n>/healthz
+```
+
+Perintah compose production:
+
+```bash
+docker compose --env-file n8n/.env.production \
+  -f n8n/docker-compose.yml -f n8n/docker-compose.prod.yml up -d
+```
+
+Mode `STOCKQU_ENV=production` menolak HTTP, localhost, private IP, domain
+placeholder, token pendek, URL callback yang berbeda, dan memory checkpoint.
+Nilai URL asli tidak dapat diisi sebelum domain/hosting Agent Service dan n8n
+tersedia.
+
 ## P1 - Data & Analyst
 
 ### 1. Database

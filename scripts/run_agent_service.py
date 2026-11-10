@@ -14,10 +14,13 @@ import argparse
 def main() -> int:
     import uvicorn
 
+    from src.services.deployment import assert_agent_service_production_ready
+
     ap = argparse.ArgumentParser(description="StockQu Agent Service")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args()
+    assert_agent_service_production_ready()
     uvicorn.run("src.service.api:app", host=args.host, port=args.port, workers=1, proxy_headers=True)
     return 0
 

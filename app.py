@@ -15,9 +15,19 @@ from src.services.auth import (
     SUPPLIER_DOCUMENT_ADMIN_ROLES,
     require_streamlit_access,
 )
+from src.services.deployment import (
+    DeploymentConfigurationError,
+    assert_streamlit_production_ready,
+)
 from src.ui.session import remember
 
 st.set_page_config(page_title="StockQu", page_icon=":material/inventory_2:", layout="wide")
+
+try:
+    assert_streamlit_production_ready()
+except DeploymentConfigurationError as exc:
+    st.error(f"Konfigurasi production belum siap: {exc}")
+    st.stop()
 
 actor, user_client = require_streamlit_access(ALL_USER_ROLES, "membuka StockQu")
 remember(actor, user_client)
