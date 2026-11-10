@@ -177,8 +177,117 @@ def workflow_status() -> None:
             st.error(f"Error: {job['error_message']}")
 
 
+CARD_LINK_STYLE = """
+<style>
+/* Card container: lebar penuh */
+[data-testid="stMain"] [data-testid="stPageLink"],
+[data-testid="stMain"] .stPageLink,
+[data-testid="stTabs"] [data-testid="stPageLink"],
+[data-testid="stTabPanel"] [data-testid="stPageLink"],
+.stTabs [data-testid="stPageLink"],
+.stTabs .stPageLink,
+div[role="tabpanel"] [data-testid="stPageLink"] {
+    width: 100% !important;
+    display: block !important;
+}
+
+[data-testid="stMain"] [data-testid="stPageLink"] > div,
+[data-testid="stMain"] .stPageLink > div,
+.stTabs [data-testid="stPageLink"] > div,
+.stTabs .stPageLink > div {
+    width: 100% !important;
+}
+
+/* Tombol Kartu Opsi 4: .v4 + .btn */
+[data-testid="stMain"] [data-testid="stPageLink"] a,
+[data-testid="stMain"] .stPageLink a,
+[data-testid="stTabs"] [data-testid="stPageLink"] a,
+[data-testid="stTabPanel"] [data-testid="stPageLink"] a,
+.stTabs [data-testid="stPageLink"] a,
+.stTabs .stPageLink a,
+div[role="tabpanel"] [data-testid="stPageLink"] a {
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.6rem !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
+    padding: 0.55rem 1rem !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+    text-decoration: none !important;
+    background: #ffffff !important;
+    border: 1px solid #cfd8d3 !important;
+    box-shadow: 0 1px 3px rgba(30, 42, 59, 0.12) !important;
+    box-sizing: border-box !important;
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.5rem !important;
+    color: #1E2A44 !important;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s, border-color 0.15s !important;
+}
+
+/* Hover: .v4:hover */
+[data-testid="stMain"] [data-testid="stPageLink"] a:hover,
+[data-testid="stMain"] .stPageLink a:hover,
+[data-testid="stTabs"] [data-testid="stPageLink"] a:hover,
+[data-testid="stTabPanel"] [data-testid="stPageLink"] a:hover,
+.stTabs [data-testid="stPageLink"] a:hover,
+.stTabs .stPageLink a:hover,
+div[role="tabpanel"] [data-testid="stPageLink"] a:hover {
+    border-color: #1b7f5c !important;
+    box-shadow: 0 2px 6px rgba(27, 127, 92, 0.25) !important;
+    background: #ffffff !important;
+}
+
+/* Active: .btn:active */
+[data-testid="stMain"] [data-testid="stPageLink"] a:active,
+[data-testid="stMain"] .stPageLink a:active,
+[data-testid="stTabs"] [data-testid="stPageLink"] a:active,
+[data-testid="stTabPanel"] [data-testid="stPageLink"] a:active,
+.stTabs [data-testid="stPageLink"] a:active,
+.stTabs .stPageLink a:active,
+div[role="tabpanel"] [data-testid="stPageLink"] a:active {
+    transform: translateY(1px) !important;
+}
+
+/* Chevron kanan: .v4 .chev */
+[data-testid="stMain"] [data-testid="stPageLink"] a::after,
+[data-testid="stMain"] .stPageLink a::after,
+[data-testid="stTabs"] [data-testid="stPageLink"] a::after,
+[data-testid="stTabPanel"] [data-testid="stPageLink"] a::after,
+.stTabs [data-testid="stPageLink"] a::after,
+.stTabs .stPageLink a::after,
+div[role="tabpanel"] [data-testid="stPageLink"] a::after {
+    content: "" !important;
+    display: inline-block !important;
+    margin-left: auto !important;
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b7f5c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 18 15 12 9 6'%3E%3C/polyline%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: 18px 18px !important;
+}
+
+/* Teks label di dalam kartu */
+[data-testid="stMain"] [data-testid="stPageLink"] a p,
+[data-testid="stMain"] .stPageLink a p,
+.stTabs [data-testid="stPageLink"] a p,
+.stTabs .stPageLink a p {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-weight: 600 !important;
+    color: #1E2A44 !important;
+}
+</style>
+"""
+
+
 def main() -> None:
     st.title("StockQu")
+    st.html(CARD_LINK_STYLE)
 
     latest_sync = snapshot.sync_logs[0] if snapshot.sync_logs else None
     budget_available = snapshot.budget.get("available_budget") if snapshot.budget else None
@@ -225,65 +334,6 @@ def main() -> None:
     )
 
     with tabs[0]:
-        st.markdown(
-            """
-            <style>
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"],
-            div[data-testid="stTabContent"] div.stPageLink {
-                width: 100% !important;
-            }
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"],
-            div[data-testid="stTabContent"] div.stPageLink a {
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: flex-start !important;
-                width: 100% !important;
-                gap: 0.6rem !important;
-                font-weight: 600 !important;
-                line-height: 1.2 !important;
-                padding: 0.55rem 1rem !important;
-                border-radius: 8px !important;
-                cursor: pointer !important;
-                text-decoration: none !important;
-                background: #fff !important;
-                border: 1px solid #cfd8d3 !important;
-                box-shadow: 0 1px 3px rgba(30, 42, 59, 0.12) !important;
-                box-sizing: border-box !important;
-                margin-top: 0.25rem !important;
-                margin-bottom: 0.5rem !important;
-                transition: background 0.15s, box-shadow 0.15s, transform 0.1s, border-color 0.15s !important;
-            }
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]:hover,
-            div[data-testid="stTabContent"] div.stPageLink a:hover {
-                border-color: #1b7f5c !important;
-                box-shadow: 0 2px 6px rgba(27, 127, 92, 0.25) !important;
-                background: #fff !important;
-            }
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]:active,
-            div[data-testid="stTabContent"] div.stPageLink a:active {
-                transform: translateY(1px) !important;
-            }
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]::after,
-            div[data-testid="stTabContent"] div.stPageLink a::after {
-                content: "" !important;
-                margin-left: auto !important;
-                width: 18px !important;
-                height: 18px !important;
-                min-width: 18px !important;
-                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231b7f5c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 18 15 12 9 6'%3E%3C/polyline%3E%3C/svg%3E") !important;
-                background-repeat: no-repeat !important;
-                background-position: center !important;
-                background-size: 18px 18px !important;
-            }
-            div[data-testid="stTabContent"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"] span,
-            div[data-testid="stTabContent"] div.stPageLink a span {
-                color: #1E2A44 !important;
-                font-weight: 600 !important;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
         nav_link(
             "app_pages/prediksi.py",
             label="Buka detail Prediksi & Risiko",
