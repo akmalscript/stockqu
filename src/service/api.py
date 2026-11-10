@@ -96,7 +96,16 @@ class SentCallback(BaseModel):
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict:
-    return {"status": "ok"}
+    supabase_status = "skipped"
+    try:
+        from src.services.supabase_client import get_client
+        client = get_client(write=True)
+        client.table("products").select("id").limit(1).execute()
+        supabase_status = "connected"
+    except Exception as exc:
+        log.warning("Supabase health ping skipped or failed: %s", safe_error(exc))
+        supabase_status = "unreachable"
+    return {"status": "ok", "supabase": supabase_status}
 
 
 @app.get("/ready")
