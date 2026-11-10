@@ -10,6 +10,7 @@ Endpoint (semua kecuali /health wajib header Authorization: Bearer <N8N_TO_SERVI
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import urllib.parse
@@ -189,18 +190,27 @@ def _send_fonnte_reply(target: str, message: str, inboxid: str = "") -> None:
 
 
 @app.api_route("/webhooks/fonnte-reply", methods=["GET", "POST"])
+@app.api_route("/webhooks/fonn", methods=["GET", "POST"])
+@app.api_route("/fonnte", methods=["GET", "POST"])
+@app.api_route("/fonn", methods=["GET", "POST"])
 async def fonnte_reply(request: Request) -> dict:
     """Webhook balasan langsung dari WhatsApp via Fonnte (GET untuk cek Fonnte, POST untuk pesan masuk)."""
     if request.method == "GET":
         return {"status": "ok", "detail": "StockQu Fonnte Webhook"}
 
     data: dict[str, Any] = {}
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
+    body_bytes = await request.body()
+    if body_bytes:
         try:
-            data = await request.json()
+            data = json.loads(body_bytes.decode("utf-8", errors="replace"))
         except Exception:  # noqa: BLE001
             pass
+        if not data:
+            try:
+                qs = urllib.parse.parse_qs(body_bytes.decode("utf-8", errors="replace"))
+                data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in qs.items()}
+            except Exception:  # noqa: BLE001
+                pass
     if not data:
         try:
             form = await request.form()
@@ -208,8 +218,10 @@ async def fonnte_reply(request: Request) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    sender = str(data.get("sender") or "").strip()
-    body = str(data.get("message") or "").strip()
+    log.info("Fonnte webhook masuk: %s", data)
+
+    sender = str(data.get("sender") or data.get("from") or data.get("From") or "").strip()
+    body = str(data.get("message") or data.get("body") or data.get("Body") or data.get("text") or "").strip()
     inboxid = str(data.get("inboxid") or data.get("id") or "")
 
     if not sender or not body:
