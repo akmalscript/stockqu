@@ -176,3 +176,45 @@ def test_sheets_settings_url_extraction(monkeypatch):
     monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
     cfg = sheets_settings()
     assert cfg["spreadsheet_id"] == "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+
+
+def test_sheets_settings_handles_streamlit_attrdict_mapping(monkeypatch):
+    import json
+    from collections.abc import Mapping
+    import streamlit as st
+    from src.config import sheets_settings
+    from src.services.sheets_client import sheets_configured
+
+    class FakeAttrDict(Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+        def get(self, key, default=None):
+            return self._data.get(key, default)
+
+    fake_secrets = {
+        "GOOGLE_SHEETS_SPREADSHEET_ID": "https://docs.google.com/spreadsheets/d/abc12345/edit",
+        "gcp_service_account": FakeAttrDict({
+            "type": "service_account",
+            "client_email": "bot@example.iam.gserviceaccount.com",
+            "private_key": "-----BEGIN PRIVATE KEY-----\\ntest\\n-----END PRIVATE KEY-----\\n",
+        }),
+    }
+    monkeypatch.delenv("GOOGLE_SHEETS_SPREADSHEET_ID", raising=False)
+    monkeypatch.delenv("SPREADSHEET_URL", raising=False)
+    monkeypatch.setattr(st, "secrets", fake_secrets)
+    cfg = sheets_settings()
+    assert cfg["spreadsheet_id"] == "abc12345"
+    assert cfg["service_account_json"] is not None
+    info = json.loads(cfg["service_account_json"])
+    assert info["client_email"] == "bot@example.iam.gserviceaccount.com"
+    assert sheets_configured() is True

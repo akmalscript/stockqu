@@ -82,10 +82,12 @@ if sync_clicked:
                     st.success(msg)
                     st.rerun()
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Gagal sinkronisasi: {safe_error(exc)}")
+            st.error(f"Gagal sinkronisasi ({type(exc).__name__}): {exc}")
     elif agent_service_client.configured():
         try:
             with st.spinner("Menyinkronkan Google Sheets ↔ Supabase via Agent Service..."):
+                import importlib
+                importlib.reload(agent_service_client)
                 res = agent_service_client.trigger_inventory_sync(actor.user_id)
                 load.clear()
                 status = res.get("status", "success")
@@ -101,7 +103,7 @@ if sync_clicked:
                     st.success(msg)
                     st.rerun()
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Gagal sinkronisasi via Agent Service: {safe_error(exc)}")
+            st.error(f"Gagal sinkronisasi via Agent Service ({type(exc).__name__}): {exc}")
     else:
         cfg = sheets_settings()
         missing = []

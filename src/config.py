@@ -6,6 +6,7 @@ Kredensial dibaca dari environment (.env) atau Streamlit secrets - tidak pernah 
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -67,17 +68,17 @@ def get_setting(name: str, default: str | None = None) -> str | None:
         for candidate in (name, name.lower(), name.upper()):
             if candidate in st.secrets:
                 val = st.secrets[candidate]
-                if isinstance(val, (dict, list)):
-                    return json.dumps(val)
+                if isinstance(val, (dict, list, Mapping)):
+                    return json.dumps(dict(val) if isinstance(val, Mapping) else val)
                 return str(val)
         for section in ("google_sheets", "sheets", "google", "gcp", "service_account"):
-            if section in st.secrets and isinstance(st.secrets[section], dict):
+            if section in st.secrets and isinstance(st.secrets[section], (dict, Mapping)):
                 sec = st.secrets[section]
                 for sub in (name, name.lower(), name.removeprefix("GOOGLE_SHEETS_").lower(), name.removeprefix("GOOGLE_").lower()):
                     if sub in sec:
                         val = sec[sub]
-                        if isinstance(val, (dict, list)):
-                            return json.dumps(val)
+                        if isinstance(val, (dict, list, Mapping)):
+                            return json.dumps(dict(val) if isinstance(val, Mapping) else val)
                         return str(val)
     except Exception:  # noqa: BLE001 - secrets tidak tersedia di luar Streamlit
         return default
@@ -110,7 +111,7 @@ def sheets_settings() -> dict:
                         break
             if not raw_sheet_id:
                 for sec_name in ("google_sheets", "sheets", "google", "gcp"):
-                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], (dict, Mapping)):
                         sec = st.secrets[sec_name]
                         for sub in ("spreadsheet_id", "spreadsheet_url", "spreadsheet", "sheet_url", "url", "id"):
                             if sub in sec and isinstance(sec[sub], str) and sec[sub].strip():
@@ -118,14 +119,14 @@ def sheets_settings() -> dict:
                                 break
                         if raw_sheet_id:
                             break
-            if not raw_sheet_id and "connections" in st.secrets and isinstance(st.secrets["connections"], dict):
+            if not raw_sheet_id and "connections" in st.secrets and isinstance(st.secrets["connections"], (dict, Mapping)):
                 gs = st.secrets["connections"].get("gsheets")
-                if isinstance(gs, dict):
+                if isinstance(gs, (dict, Mapping)):
                     raw_sheet_id = gs.get("spreadsheet") or gs.get("spreadsheet_id") or gs.get("spreadsheet_url")
 
             if stock_tab == SHEETS_STOCK_TAB_DEFAULT:
                 for sec_name in ("google_sheets", "sheets"):
-                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], (dict, Mapping)):
                         sec = st.secrets[sec_name]
                         if "stock_tab" in sec and isinstance(sec["stock_tab"], str):
                             stock_tab = sec["stock_tab"]
@@ -133,14 +134,14 @@ def sheets_settings() -> dict:
 
             if not sa_file and not sa_json:
                 for sec_name in ("gcp_service_account", "google_service_account", "service_account", "gcp", "google_sheets", "sheets"):
-                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], dict):
+                    if sec_name in st.secrets and isinstance(st.secrets[sec_name], (dict, Mapping)):
                         sec = st.secrets[sec_name]
                         if ("client_email" in sec and "private_key" in sec) or sec.get("type") == "service_account":
                             sa_json = json.dumps(dict(sec))
                             break
-                if not sa_json and "connections" in st.secrets and isinstance(st.secrets["connections"], dict):
+                if not sa_json and "connections" in st.secrets and isinstance(st.secrets["connections"], (dict, Mapping)):
                     gs = st.secrets["connections"].get("gsheets")
-                    if isinstance(gs, dict):
+                    if isinstance(gs, (dict, Mapping)):
                         if ("client_email" in gs and "private_key" in gs) or gs.get("type") == "service_account":
                             sa_json = json.dumps(dict(gs))
     except Exception:  # noqa: BLE001
