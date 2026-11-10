@@ -104,6 +104,7 @@ def test_agent_service_health_is_live_but_readiness_rejects_bad_production(monke
     client = TestClient(app)
 
     assert client.get("/health").status_code == 200
+    assert client.head("/health").status_code == 200
     response = client.get("/ready")
     assert response.status_code == 503
     assert "Konfigurasi production belum siap" in response.json()["detail"]

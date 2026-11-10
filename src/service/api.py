@@ -94,7 +94,7 @@ class SentCallback(BaseModel):
     email_message_id: str = Field(min_length=1, max_length=200)
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict:
     return {"status": "ok"}
 
