@@ -23,7 +23,23 @@ def remember(actor: ActorContext, client) -> None:
     st.session_state[CLIENT_KEY] = client
 
 
+COMPACT_TOP_CSS = """
+<style>
+/* Kurangi jarak di atas judul di semua halaman */
+.block-container, [data-testid="stMainBlockContainer"], .main .block-container {
+    padding-top: 1.5rem !important;
+    padding-bottom: 2rem !important;
+}
+h1:first-child, .main h1:first-child, [data-testid="stHeading"]:first-child {
+    padding-top: 0 !important;
+    margin-top: -0.5rem !important;
+}
+</style>
+"""
+
+
 def page_context(allowed_roles: Iterable[str], action: str) -> tuple[ActorContext, object, SupabaseRepository]:
+    st.markdown(COMPACT_TOP_CSS, unsafe_allow_html=True)
     actor = st.session_state.get(ACTOR_KEY)
     client = st.session_state.get(CLIENT_KEY)
     if actor is None or client is None:

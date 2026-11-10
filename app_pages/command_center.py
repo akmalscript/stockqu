@@ -11,7 +11,6 @@ from src.config import (
     BUDGET_MONTHLY,
     CRON_TIME_WIB,
     LABEL_NOT_FOUND,
-    LABEL_SIMULASI,
 )
 from src.services.auth import ALL_USER_ROLES
 from src.services.dashboard import load_dashboard_snapshot
@@ -226,12 +225,6 @@ def main() -> None:
     )
 
     with tabs[0]:
-        if snapshot.has_dummy_data:
-            st.warning(LABEL_SIMULASI)
-        st.caption(
-            "Sumber: Supabase dengan JWT user/RLS. Stok Supabase disinkronkan dua arah "
-            "dengan Google Sheets dan tetap dipisahkan per cabang."
-        )
         nav_link(
             "app_pages/prediksi.py",
             label="Buka detail Prediksi & Risiko",

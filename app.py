@@ -23,6 +23,23 @@ from src.ui.session import remember
 
 st.set_page_config(page_title="StockQu", page_icon=":material/inventory_2:", layout="wide")
 
+st.markdown(
+    """
+    <style>
+    /* Kurangi jarak di atas judul StockQu dan judul di semua halaman */
+    .block-container, [data-testid="stMainBlockContainer"], .main .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+    h1:first-child, .main h1:first-child, [data-testid="stHeading"]:first-child {
+        padding-top: 0 !important;
+        margin-top: -0.5rem !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 try:
     assert_streamlit_production_ready()
 except DeploymentConfigurationError as exc:
