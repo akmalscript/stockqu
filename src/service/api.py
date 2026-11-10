@@ -15,7 +15,7 @@ import threading
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from src.services.approval import (
     APPROVER_ROLES_DASHBOARD,
@@ -86,9 +86,17 @@ class WhatsAppReply(BaseModel):
 class FonnteReply(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    sender: str = Field(min_length=6, max_length=40)
-    message: str = Field(min_length=1, max_length=2000)
-    inboxid: str | int = Field()
+    sender: str = Field(
+        min_length=6,
+        max_length=40,
+        validation_alias=AliasChoices("sender", "from", "From"),
+    )
+    message: str = Field(
+        min_length=1,
+        max_length=2000,
+        validation_alias=AliasChoices("message", "body", "Body", "text"),
+    )
+    inboxid: str | int = Field(validation_alias=AliasChoices("inboxid", "id"))
 
 
 class DashboardDecision(BaseModel):
@@ -176,8 +184,11 @@ def whatsapp_reply(req: WhatsAppReply) -> dict:
 
 
 @app.post("/webhooks/fonnte-reply", dependencies=[Depends(require_token)])
+@app.post("/webhooks/fonn", dependencies=[Depends(require_token)])
+@app.post("/fonnte", dependencies=[Depends(require_token)])
+@app.post("/fonn", dependencies=[Depends(require_token)])
 def fonnte_reply(req: FonnteReply) -> dict:
-    """W3 Fonnte dari n8n; balasan provider tetap dikirim oleh n8n."""
+    """W3 Fonnte dari n8n; menerima alias payload umum tanpa melewati autentikasi."""
     try:
         phone = require_whitelisted(req.sender)
         parsed = parse_reply(req.message)
@@ -192,7 +203,7 @@ def fonnte_reply(req: FonnteReply) -> dict:
             "decision": parsed.decision,
             "via": "whatsapp",
             "decided_by": phone,
-            "decision_ref": f"fonnte:{inboxid or 'msg'}",
+            "decision_ref": f"fonnte:{inboxid}",
             "approver_role": "manager_whatsapp",
         })
     except Exception as exc:  # noqa: BLE001 - mis. sudah disetujui sebelumnya

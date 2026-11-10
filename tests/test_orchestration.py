@@ -408,6 +408,11 @@ def test_api_whatsapp_reply_checks_signature_and_whitelist():
 
 
 def test_api_fonnte_reply_requires_n8n_token_whitelist_and_idempotent_inboxid():
+    from src.service.api import FonnteReply
+
+    aliased = FonnteReply.model_validate({"From": MANAGER, "Body": "OK APR-20261109-01", "id": "FN-ALIAS"})
+    assert aliased.sender == MANAGER and aliased.message.startswith("OK ") and aliased.inboxid == "FN-ALIAS"
+
     repo = P4Repo()
     client, _rt = api_client(repo)
     h = {"Authorization": "Bearer svc-token"}
@@ -415,6 +420,7 @@ def test_api_fonnte_reply_requires_n8n_token_whitelist_and_idempotent_inboxid():
     payload = {"sender": MANAGER, "message": "OK APR-20261109-01", "inboxid": "FN-1"}
 
     assert client.post("/webhooks/fonnte-reply", json=payload).status_code == 401
+    assert client.post("/fonn", json={"From": MANAGER, "Body": payload["message"], "id": "FN-2"}).status_code == 401
     stranger = client.post(
         "/webhooks/fonnte-reply",
         json={**payload, "sender": "+6289999999999"},
