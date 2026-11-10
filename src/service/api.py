@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import logging
 import threading
+import urllib.parse
+import urllib.request
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.config import get_setting
 from src.services.approval import (
     APPROVER_ROLES_DASHBOARD,
     ApprovalRejected,
@@ -165,6 +168,80 @@ def whatsapp_reply(req: WhatsAppReply) -> dict:
         msg = "sudah diputuskan sebelumnya" if "already decided" in str(exc) else f"gagal ({safe_error(exc)})"
         return {"accepted": False, "reply_text": f"{parsed.approval_code} {msg}."}
     return {"accepted": res["status"] not in ("not_found",), "reply_text": res["reply"], "status": res["status"]}
+
+
+def _send_fonnte_reply(target: str, message: str, inboxid: str = "") -> None:
+    token = get_setting("FONNTE_TOKEN") or "mMae5qcWpTCYkh5HPMrV"
+    if not token:
+        log.warning("FONNTE_TOKEN belum dikonfigurasi, balasan WA tidak dikirim")
+        return
+    url = "https://api.fonnte.com/send"
+    payload = {"target": target.removeprefix("+"), "message": message}
+    if inboxid:
+        payload["inboxid"] = inboxid
+    data = urllib.parse.urlencode(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Authorization": token})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            log.info("Balasan Fonnte terkirim ke %s (status %s)", target, resp.status)
+    except Exception as exc:  # noqa: BLE001
+        log.error("Gagal mengirim balasan Fonnte ke %s: %s", target, safe_error(exc))
+
+
+@app.api_route("/webhooks/fonnte-reply", methods=["GET", "POST"])
+async def fonnte_reply(request: Request) -> dict:
+    """Webhook balasan langsung dari WhatsApp via Fonnte (GET untuk cek Fonnte, POST untuk pesan masuk)."""
+    if request.method == "GET":
+        return {"status": "ok", "detail": "StockQu Fonnte Webhook"}
+
+    data: dict[str, Any] = {}
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            data = await request.json()
+        except Exception:  # noqa: BLE001
+            pass
+    if not data:
+        try:
+            form = await request.form()
+            data = dict(form)
+        except Exception:  # noqa: BLE001
+            pass
+
+    sender = str(data.get("sender") or "").strip()
+    body = str(data.get("message") or "").strip()
+    inboxid = str(data.get("inboxid") or data.get("id") or "")
+
+    if not sender or not body:
+        return {"status": "ignored", "detail": "sender atau message kosong"}
+
+    try:
+        phone = require_whitelisted(sender)
+        parsed = parse_reply(body)
+    except ApprovalRejected as exc:
+        reply_msg = f"Tidak diproses: {exc}"
+        _send_fonnte_reply(sender, reply_msg, inboxid)
+        return {"status": False, "reply": reply_msg}
+    except Exception as exc:  # noqa: BLE001
+        reply_msg = f"Format balasan tidak dikenal: {safe_error(exc)}"
+        _send_fonnte_reply(sender, reply_msg, inboxid)
+        return {"status": False, "reply": reply_msg}
+
+    try:
+        res = runtime().submit_decision(parsed.approval_code, {
+            "decision": parsed.decision,
+            "via": "whatsapp",
+            "decided_by": phone,
+            "decision_ref": f"fonnte:{inboxid or 'msg'}",
+            "approver_role": "manager_whatsapp",
+        })
+        reply_msg = res["reply"]
+    except Exception as exc:  # noqa: BLE001 - mis. sudah disetujui sebelumnya
+        msg = "sudah diputuskan sebelumnya" if "already decided" in str(exc) else f"gagal ({safe_error(exc)})"
+        reply_msg = f"{parsed.approval_code} {msg}."
+
+    _send_fonnte_reply(sender, reply_msg, inboxid)
+    return {"status": True, "reply": reply_msg}
 
 
 @app.post("/approvals/{approval_code}/dashboard-decision", dependencies=[Depends(require_token)])
