@@ -418,3 +418,43 @@ def test_incoming_sheet_upsert_is_idempotent():
     second = upsert_incoming_rows(sheet, [row])
     assert first["appended"] == 1 and second == {"tab": "Incoming", "appended": 0, "updated": 1}
     assert sheet.cells[1] == INCOMING_HEADER and len(sheet.cells) == 2 and sheet.cells[2][4] == "81"
+
+
+def test_concurrent_incoming_callbacks_do_not_overwrite_rows():
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src.services.incoming_sync import INCOMING_HEADER, upsert_incoming_rows
+
+    class SlowSheet:
+        def __init__(self):
+            self.cells = {}
+
+        def ensure_tab(self, tab):
+            return {"title": tab}
+
+        def get_range(self, rng):
+            values = [list(self.cells[r]) for r in sorted(self.cells)]
+            time.sleep(0.02)
+            return values
+
+        def update_range(self, rng, values):
+            row = int(rng.split("!A")[1].split(":")[0])
+            self.cells[row] = [str(v) for v in values[0]]
+            return 1
+
+    sheet = SlowSheet()
+    base = {"product_name": "Item A", "branch": "Branch 1", "qty_incoming": 1,
+            "supplier": "Supplier A", "expected_arrival": "2026-11-12", "status": "in_transit"}
+    rows = [
+        [{**base, "po_number": "PO-1", "sku": "SKU-A"}],
+        [{**base, "po_number": "PO-2", "sku": "SKU-B"}],
+    ]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda value: upsert_incoming_rows(sheet, value), rows))
+
+    assert sheet.cells[1] == INCOMING_HEADER
+    assert {(row[0], row[1]) for row in sheet.cells.values() if row != INCOMING_HEADER} == {
+        ("PO-1", "SKU-A"), ("PO-2", "SKU-B")
+    }

@@ -511,7 +511,10 @@ class PurchaserAgent:
         graph.add_edge("explain", "validate")
         graph.add_edge("validate", "persist")
         graph.add_edge("persist", END)
-        return graph.compile()
+        # Durability lintas approval dimiliki graph orkestrator. State internal
+        # agent sudah dipersist ke tabel domain dan tidak boleh ikut mewarisi
+        # checkpointer parent.
+        return graph.compile(checkpointer=False)
 
     def run(
         self,

@@ -358,7 +358,11 @@ class AnalystAgent:
         g.add_edge("detect_risk", "explain")
         g.add_edge("explain", "persist")
         g.add_edge("persist", END)
-        return g.compile()
+        # Agent ini dipanggil sebagai node di graph orkestrator yang memakai
+        # PostgresSaver. State detail Analyst memuat nilai NumPy dari tool
+        # forecasting dan sudah dipersist ke tabel domain; jangan mewarisi
+        # checkpointer parent untuk state internal yang besar tersebut.
+        return g.compile(checkpointer=False)
 
     def run(self, as_of: date | None = None, run_id: str | None = None) -> dict:
         authorize(self.actor, ANALYST_RUN_ROLES, "menjalankan Agent Analyst")

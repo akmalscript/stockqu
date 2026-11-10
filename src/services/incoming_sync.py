@@ -9,12 +9,14 @@ Idempotent: kunci (po_number, sku) -> update baris yang ada, bukan menambah bari
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from threading import Lock
 
 from src.config import get_setting
 from src.utils.retry import call_with_retry
 
 INCOMING_HEADER = ["po_number", "sku", "product_name", "branch", "qty_incoming", "supplier",
                    "expected_arrival", "status", "updated_at"]
+_INCOMING_SYNC_LOCK = Lock()
 
 
 def incoming_tab() -> str:
@@ -23,6 +25,14 @@ def incoming_tab() -> str:
 
 def upsert_incoming_rows(sheets, rows: list[dict], sleep=None) -> dict:
     """rows: dict dengan kunci INCOMING_HEADER (tanpa updated_at). Kembalikan ringkasan."""
+    # Agent Service berjalan dengan satu worker, tetapi beberapa callback W5 dapat
+    # diproses oleh thread FastAPI secara paralel. Serialisasi read-modify-write
+    # mencegah dua PO memilih nomor baris append yang sama dan saling menimpa.
+    with _INCOMING_SYNC_LOCK:
+        return _upsert_incoming_rows(sheets, rows, sleep=sleep)
+
+
+def _upsert_incoming_rows(sheets, rows: list[dict], sleep=None) -> dict:
     tab = incoming_tab()
     kw = {"sleep": sleep} if sleep else {}
     now = datetime.now(timezone.utc).isoformat()  # noqa: UP017 - Python 3.10 compatible

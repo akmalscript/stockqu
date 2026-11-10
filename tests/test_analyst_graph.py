@@ -1,8 +1,33 @@
+from typing import TypedDict
+
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
+
 from src.agents.analyst import AnalystAgent
 from src.utils import formulas as F
 from tests.fakes import AS_OF, FakeRepo, FakeSheets
 
 no_sleep = lambda s: None
+
+
+def test_nested_analyst_does_not_leak_numpy_into_parent_checkpoint():
+    class ParentState(TypedDict, total=False):
+        result: dict
+
+    def run_analyst(_state):
+        out = AnalystAgent(FakeRepo(), persist=False).run(run_id="SERDE-TEST")
+        return {"result": {"risk_count": len(out.get("risk_items", []))}}
+
+    graph = StateGraph(ParentState)
+    graph.add_node("analyst", run_analyst)
+    graph.add_edge(START, "analyst")
+    graph.add_edge("analyst", END)
+
+    out = graph.compile(checkpointer=InMemorySaver()).invoke(
+        {}, {"configurable": {"thread_id": "serde-test"}}
+    )
+
+    assert out["result"]["risk_count"] == 2
 
 
 def _by_key(result):
