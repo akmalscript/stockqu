@@ -58,31 +58,52 @@ Jangan pernah commit file `.env` atau `.streamlit/secrets.toml`.
 
 ## Cara Menjalankan
 
+Untuk menjalankan sistem StockQu secara penuh (Dashboard UI + Agent Service + Webhook WhatsApp Approval):
+
+### 1. Jalankan Dashboard Streamlit (Frontend)
+
 ```bash
 streamlit run app.py
 ```
 
-Buka di browser yang muncul, biasanya `http://localhost:8501`.
+Buka di browser di `http://localhost:8501`.
 
-### n8n + Gmail lokal
+### 2. Jalankan Agent Service (Backend LangGraph & Webhook)
 
-Jalankan instance n8n yang sudah dipin ke versi stabil dan memakai timezone
-Asia/Jakarta:
+Agent Service menangani eksekusi LangGraph (Analyst, Purchaser, Negotiator) serta webhook persetujuan WhatsApp:
+
+```bash
+# Windows:
+.\.venv\Scripts\python -m scripts.run_agent_service
+
+# Mac / Linux:
+python -m scripts.run_agent_service
+```
+
+Service berjalan di `http://localhost:8000`.
+
+### 3. Jalankan Tunnel Publik ngrok (Integrasi Webhook Eksternal)
+
+Dibutuhkan agar n8n Cloud dan Twilio Sandbox dapat mengirimkan callback webhook ke Agent Service lokal:
+
+```bash
+ngrok http 8000 --url=<domain-ngrok-anda>
+# Contoh:
+# ngrok http 8000 --url=turret-backlands-overtime.ngrok-free.dev
+```
+
+### 4. n8n + Otomasi Alur (W1 - W5)
+
+Jalankan instance n8n lokal (Docker) atau gunakan n8n Cloud yang sudah dipin ke versi stabil dan memakai timezone Asia/Jakarta:
 
 ```bash
 cp n8n/.env.example n8n/.env
 docker compose --env-file n8n/.env -f n8n/docker-compose.yml up -d
 ```
 
-Buka `http://localhost:5678`. Panduan lengkap pembuatan Gmail OAuth2,
-credential Supabase, migration outbox, import workflow, dan pengujian approval
-ada di [`n8n/README.md`](n8n/README.md). Workflow Gmail tidak mengirim PO tanpa
-status `approved` dan approval WhatsApp terbaru `OK`.
+Buka `http://localhost:5678` (atau dashboard n8n Cloud Anda). Panduan lengkap pembuatan Gmail OAuth2, credential Supabase, migration outbox, import workflow, dan pengujian approval ada di [`n8n/README.md`](n8n/README.md). Workflow Gmail tidak mengirim PO tanpa status `approved` dan approval WhatsApp terbaru `OK`.
 
-Status integrasi terakhir dan blocker sebelum demo end-to-end dicatat di
-[`docs/e2e-readiness-audit.md`](docs/e2e-readiness-audit.md). Jangan menyatakan
-demo penuh siap hanya berdasarkan unit test; cron, WhatsApp, approval, Gmail,
-dan update stok harus dibuktikan pada environment deployment yang sama.
+Status integrasi terakhir dan blocker sebelum demo end-to-end dicatat di [`docs/e2e-readiness-audit.md`](docs/e2e-readiness-audit.md). Jangan menyatakan demo penuh siap hanya berdasarkan unit test; cron, WhatsApp, approval, Gmail, dan update stok harus dibuktikan pada environment deployment yang sama.
 
 ## P1 - Data & Analyst
 
