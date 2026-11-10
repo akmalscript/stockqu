@@ -386,6 +386,38 @@ def test_api_whatsapp_reply_checks_signature_and_whitelist():
     assert sent.status_code == 200 and sent.json()["status"] == "sent"
 
 
+def test_api_fonnte_reply_requires_n8n_token_whitelist_and_idempotent_inboxid():
+    repo = P4Repo()
+    client, _rt = api_client(repo)
+    h = {"Authorization": "Bearer svc-token"}
+    client.post("/workflows/daily-run", json={"day": "2026-11-09", "wait": True}, headers=h)
+    payload = {"sender": MANAGER, "message": "OK APR-20261109-01", "inboxid": "FN-1"}
+
+    assert client.post("/webhooks/fonnte-reply", json=payload).status_code == 401
+    stranger = client.post(
+        "/webhooks/fonnte-reply",
+        json={**payload, "sender": "+6289999999999"},
+        headers=h,
+    )
+    assert stranger.json()["accepted"] is False and "tidak terdaftar" in stranger.json()["reply_text"]
+    assert all(p["status"] == "waiting_approval" for p in repo.pos.values())
+
+    approved = client.post("/webhooks/fonnte-reply", json=payload, headers=h)
+    assert approved.status_code == 200
+    assert approved.json()["accepted"] is True and approved.json()["status"] == "approved"
+
+    replay = client.post("/webhooks/fonnte-reply", json=payload, headers=h)
+    assert replay.json()["accepted"] is True and replay.json()["status"] == "approved"
+
+    conflicting = client.post(
+        "/webhooks/fonnte-reply",
+        json={**payload, "inboxid": "FN-2", "message": "TOLAK APR-20261109-01"},
+        headers=h,
+    )
+    assert conflicting.json()["accepted"] is False
+    assert "sudah diputuskan" in conflicting.json()["reply_text"]
+
+
 def test_api_sent_callback_blocked_before_approval():
     repo = P4Repo()
     client, _ = api_client(repo)

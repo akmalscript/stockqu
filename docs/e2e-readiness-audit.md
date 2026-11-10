@@ -1,55 +1,57 @@
 # Audit Kesiapan End-to-End StockQu
 
-Tanggal audit: 10 November 2026  
-Basis kode: `main` pada commit `abce5f0`  
+Tanggal audit ulang: 10 November 2026
+Basis kode: `origin/main` pada commit `fbc5de5` dan branch `fix/production-gmail-delivery`
 Sumber kebutuhan: SRS v5.0, roadmap StockQu, `AGENTS.md`, dan `stockqu-domain`
 
 ## Kesimpulan
 
-Kode P0-P5 sudah memiliki jalur utama Analyst, Purchaser, Negotiator,
-approval, Gmail outbox, dashboard, dan ekspor. Namun environment saat audit
-**belum siap untuk klaim end-to-end penuh**. Jalur aman berhenti di human
-approval; cron dan WhatsApp belum aktif, sedangkan migration Gmail outbox belum
-tersedia di Supabase remote.
+Kode P0-P5 sudah memiliki jalur Analyst, Purchaser, Negotiator, approval,
+Gmail outbox, dashboard, dan ekspor. Namun environment showcase **belum lulus
+end-to-end penuh**. WhatsApp cloud lama merespons, tetapi workflow Fonnte hasil
+perbaikan belum diimpor. Gmail production masih tidak aktif, migration outbox
+belum ada di Supabase remote, dan data histori masih `DUMMY-SEED`.
 
 ## Yang Sudah Terverifikasi
 
 | Area | Hasil |
 |---|---|
-| Unit/integration test lokal | 114 test lulus, termasuk regression test OAuth Gmail |
+| Unit/integration test lokal | 131 test lulus, termasuk Fonnte, approval, Gmail outbox, dan production config |
 | Streamlit | Health endpoint lokal merespons HTTP 200 |
 | Agent Service | `/health` lokal merespons `ok` |
-| n8n | Health lokal merespons `ok`; workflow W4/W5 aktif |
+| n8n WhatsApp cloud | W2 menerima bearer token (HTTP 200); W3 menolak payload tanpa approver secara aman |
 | Workflow JSON | W1-W5 valid JSON dan tidak menyimpan credential inline |
 | Supabase lokal | Delapan migration tercatat; security advisor tidak menemukan issue |
 | Gmail outbox lokal | Uji SQL dalam transaksi lulus dan di-rollback |
 | RLS remote | Akses anonymous ke tabel bisnis yang diuji ditolak |
-| Google Sheets | Service account dapat membaca spreadsheet; tab `Stok` dan `Incoming` tersedia |
+| Google Sheets | Service account membaca 150 baris `Stok` dan 10 baris `Incoming` |
 | Secret repository | Tidak ditemukan key aktif pada tracked worktree dengan signature scan |
 
 ## Blocker Demo End-to-End Nyata
 
-1. **Supabase remote belum memiliki Gmail outbox.** Tabel
+1. **Gmail production belum aktif.** POST ke webhook
+   `stockqu-po-email` mengembalikan 404 karena W4/W5 belum aktif di n8n Cloud.
+2. **Supabase remote belum memiliki Gmail outbox.** Tabel
    `po_email_deliveries` dan RPC claim outbox tidak tersedia di schema cache.
    Terapkan `20261110110000_add_po_email_delivery_outbox.sql` dari akun pemilik
    project atau koneksi database yang berwenang.
-2. **W1-W3 belum aktif di n8n lokal.** Hanya W4/W5 yang terpasang dan aktif.
-   Import, pilih credential, uji negatif, lalu aktifkan cron dan WhatsApp.
-3. **Credential WhatsApp belum lengkap.** `TWILIO_AUTH_TOKEN` dan
-   `APPROVER_WHATSAPP_NUMBERS` belum dikonfigurasi. Twilio Sandbox juga
-   membutuhkan sender/credential di n8n serta webhook HTTPS publik.
-4. **Tidak ada transaksi yang memenuhi gate email.** Saat audit terdapat lima
-   PO berstatus `draft`; approval yang ada masih `pending`. Jangan mengubahnya
-   menjadi `OK` secara palsu hanya untuk melewati gate.
-5. **Google Sheets belum berisi stok.** Tab `Stok` dan `Incoming` hanya memiliki
-   header. Sinkronisasi nyata belum bisa dibuktikan sampai data yang sah tersedia.
-6. **Checkpoint deployment belum persisten.** `SUPABASE_DB_URL` belum diisi dan
+3. **Master supplier belum siap email.** Tiga supplier remote belum memiliki
+   alamat email, sehingga pengiriman PO wajib diblokir.
+4. **Data histori belum production.** Remote masih memuat 27.300 baris
+   `sales_history` dengan sumber `DUMMY-SEED`. Branch perbaikan memblokir email
+   supplier selama sumber dummy masih ada.
+5. **Fonnte belum terpasang di cloud.** Workflow W2/W3 Fonnte pada branch sudah
+   menghapus token dari kode, memvalidasi webhook secret, whitelist nomor, kode
+   APR, dan `inboxid`, tetapi workflow cloud masih versi lama dan perlu diimpor.
+6. **Agent Service publik belum terverifikasi.** URL di `.env` lokal mengarah ke
+   aplikasi lain. W3 cloud mampu mencapai suatu backend, tetapi URL deployment
+   StockQu yang dipakai n8n harus dikonfirmasi sebelum showcase.
+7. **Checkpoint deployment belum persisten.** `SUPABASE_DB_URL` belum diisi dan
    prototype lokal memakai memory checkpoint. Resume setelah restart belum
    memenuhi SRS-NF-09/SRS-F-37.
-7. **Belum ada deployment HTTPS publik.** URL yang tersedia masih lokal, sehingga
-   callback Twilio, n8n, Agent Service, dan Streamlit belum bisa diuji sebagai
-   satu deployment.
-8. **Demo lokal belum reproducible dari repo kosong.** Migration membentuk
+8. **Streamlit publik masih private.** URL deployment mengalihkan pengguna ke
+   halaman login Streamlit Community Cloud.
+9. **Demo lokal belum reproducible dari repo kosong.** Migration membentuk
    skema, tetapi repo belum menyediakan seed P0 untuk 3 branch, 50 produk,
    inventory, budget, supplier, dan kontrak. Seed histori saja tidak cukup.
 
@@ -58,8 +60,8 @@ tersedia di Supabase remote.
 | SRS | Status/gap |
 |---|---|
 | F-34 | Dynamic LLM tool calling belum ada; graph saat ini memanggil Python tool secara deterministik |
-| F-35, NF-25 | Retry/fallback agent ada, tetapi W1-W3 belum memiliki error branch dan recovery eksternal selengkap W4/W5 |
-| F-41, F-63 | Workflow Twilio tersedia sebagai JSON, tetapi runtime/credential belum aktif |
+| F-35, NF-25 | Retry/fallback agent ada; W2/W3 Fonnte sudah memiliki retry dan error branch, tetapi W1 serta recovery eksternal masih perlu dibuktikan di cloud |
+| F-41, F-63 | Workflow Fonnte tersedia sebagai JSON, tetapi versi terbaru dan credential-nya belum aktif di n8n Cloud |
 | F-43 | Gmail send tersedia, tetapi jalur PO approved sampai email belum dapat dibuktikan di remote |
 | F-45 | Konfirmasi goods receipt dan perubahan incoming menjadi on-hand belum tersedia |
 | F-47 | Notifikasi eskalasi approval tertunda/supplier gagal belum tersedia |
@@ -85,12 +87,13 @@ tersedia di Supabase remote.
 ## Gate Sebelum Menyatakan Siap Demo
 
 - Terapkan migration remote dan pastikan RPC outbox terlihat oleh PostgREST.
-- Isi credential Twilio, whitelist nomor manager, dan pasang webhook HTTPS.
-- Import/konfigurasi W1-W3; pertahankan W4/W5 dengan Gmail OAuth scope minimum.
-- Isi atau sinkronkan data stok yang berlabel sumber dengan benar ke Sheets.
+- Isi email resmi pada `suppliers.email` dan ganti histori `DUMMY-SEED` dengan data yang sah.
+- Import W2/W3 Fonnte, pilih credential, isi webhook secret, lalu aktifkan.
+- Import/aktifkan W4/W5 dengan Gmail OAuth scope minimum.
+- Perbaiki URL Agent Service dan buka akses aplikasi Streamlit untuk juri.
 - Isi `SUPABASE_DB_URL` dan buktikan workflow dapat resume setelah restart.
 - Jalankan satu skenario resmi: cron -> draft PO -> WhatsApp `OK` nyata -> Gmail
-  test recipient -> `incoming_qty` Supabase + tab `Incoming`, lalu buktikan replay
+  supplier -> `incoming_qty` Supabase + tab `Incoming`, lalu buktikan replay
   tidak mengirim email kedua.
 - Simpan execution ID, approval ID, Gmail message ID, dan durasi sebagai bukti,
   tanpa memasukkan secret ke log atau repository.

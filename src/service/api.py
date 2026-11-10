@@ -12,14 +12,11 @@ from __future__ import annotations
 
 import logging
 import threading
-import urllib.parse
-import urllib.request
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.config import get_setting
 from src.services.approval import (
     APPROVER_ROLES_DASHBOARD,
     ApprovalRejected,
@@ -86,6 +83,14 @@ class WhatsAppReply(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)  # seluruh form param Twilio apa adanya (From, Body, MessageSid, ...)
 
 
+class FonnteReply(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    sender: str = Field(min_length=6, max_length=40)
+    message: str = Field(min_length=1, max_length=2000)
+    inboxid: str | int = Field()
+
+
 class DashboardDecision(BaseModel):
     decision: Literal["approved", "rejected", "revision_requested"]
     access_token: str = Field(max_length=4000)
@@ -105,7 +110,7 @@ def health() -> dict:
         client = get_client(write=True)
         client.table("products").select("id").limit(1).execute()
         supabase_status = "connected"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - health harus tetap hidup saat provider gagal
         log.warning("Supabase health ping skipped or failed: %s", safe_error(exc))
         supabase_status = "unreachable"
     return {"status": "ok", "supabase": supabase_status}
@@ -170,62 +175,17 @@ def whatsapp_reply(req: WhatsAppReply) -> dict:
     return {"accepted": res["status"] not in ("not_found",), "reply_text": res["reply"], "status": res["status"]}
 
 
-def _send_fonnte_reply(target: str, message: str, inboxid: str = "") -> None:
-    token = get_setting("FONNTE_TOKEN") or "mMae5qcWpTCYkh5HPMrV"
-    if not token:
-        log.warning("FONNTE_TOKEN belum dikonfigurasi, balasan WA tidak dikirim")
-        return
-    url = "https://api.fonnte.com/send"
-    payload = {"target": target.removeprefix("+"), "message": message}
-    if inboxid:
-        payload["inboxid"] = inboxid
-    data = urllib.parse.urlencode(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Authorization": token})
+@app.post("/webhooks/fonnte-reply", dependencies=[Depends(require_token)])
+def fonnte_reply(req: FonnteReply) -> dict:
+    """W3 Fonnte dari n8n; balasan provider tetap dikirim oleh n8n."""
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            log.info("Balasan Fonnte terkirim ke %s (status %s)", target, resp.status)
-    except Exception as exc:  # noqa: BLE001
-        log.error("Gagal mengirim balasan Fonnte ke %s: %s", target, safe_error(exc))
-
-
-@app.api_route("/webhooks/fonnte-reply", methods=["GET", "POST"])
-async def fonnte_reply(request: Request) -> dict:
-    """Webhook balasan langsung dari WhatsApp via Fonnte (GET untuk cek Fonnte, POST untuk pesan masuk)."""
-    if request.method == "GET":
-        return {"status": "ok", "detail": "StockQu Fonnte Webhook"}
-
-    data: dict[str, Any] = {}
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            data = await request.json()
-        except Exception:  # noqa: BLE001
-            pass
-    if not data:
-        try:
-            form = await request.form()
-            data = dict(form)
-        except Exception:  # noqa: BLE001
-            pass
-
-    sender = str(data.get("sender") or "").strip()
-    body = str(data.get("message") or "").strip()
-    inboxid = str(data.get("inboxid") or data.get("id") or "")
-
-    if not sender or not body:
-        return {"status": "ignored", "detail": "sender atau message kosong"}
-
-    try:
-        phone = require_whitelisted(sender)
-        parsed = parse_reply(body)
+        phone = require_whitelisted(req.sender)
+        parsed = parse_reply(req.message)
+        inboxid = str(req.inboxid).strip()
+        if not inboxid:
+            raise ApprovalRejected("inboxid Fonnte kosong")
     except ApprovalRejected as exc:
-        reply_msg = f"Tidak diproses: {exc}"
-        _send_fonnte_reply(sender, reply_msg, inboxid)
-        return {"status": False, "reply": reply_msg}
-    except Exception as exc:  # noqa: BLE001
-        reply_msg = f"Format balasan tidak dikenal: {safe_error(exc)}"
-        _send_fonnte_reply(sender, reply_msg, inboxid)
-        return {"status": False, "reply": reply_msg}
+        return {"accepted": False, "reply_text": f"Tidak diproses: {exc}"}
 
     try:
         res = runtime().submit_decision(parsed.approval_code, {
@@ -235,13 +195,10 @@ async def fonnte_reply(request: Request) -> dict:
             "decision_ref": f"fonnte:{inboxid or 'msg'}",
             "approver_role": "manager_whatsapp",
         })
-        reply_msg = res["reply"]
     except Exception as exc:  # noqa: BLE001 - mis. sudah disetujui sebelumnya
         msg = "sudah diputuskan sebelumnya" if "already decided" in str(exc) else f"gagal ({safe_error(exc)})"
-        reply_msg = f"{parsed.approval_code} {msg}."
-
-    _send_fonnte_reply(sender, reply_msg, inboxid)
-    return {"status": True, "reply": reply_msg}
+        return {"accepted": False, "reply_text": f"{parsed.approval_code} {msg}."}
+    return {"accepted": res["status"] not in ("not_found",), "reply_text": res["reply"], "status": res["status"]}
 
 
 @app.post("/approvals/{approval_code}/dashboard-decision", dependencies=[Depends(require_token)])

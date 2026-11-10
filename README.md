@@ -84,7 +84,7 @@ Service berjalan di `http://localhost:8000`.
 
 ### 3. Jalankan Tunnel Publik ngrok (Integrasi Webhook Eksternal)
 
-Dibutuhkan agar n8n Cloud dan Twilio Sandbox dapat mengirimkan callback webhook ke Agent Service lokal:
+Dibutuhkan agar n8n Cloud dan Fonnte dapat mengirimkan callback webhook ke Agent Service lokal:
 
 ```bash
 ngrok http 8000 --url=<domain-ngrok-anda>
@@ -113,14 +113,14 @@ dapat saling menjangkau melalui HTTPS publik:
 
 ```text
 Browser -> Streamlit HTTPS -> Agent Service HTTPS -> n8n HTTPS
-Twilio -------------------------------> n8n webhook HTTPS
+Fonnte -------------------------------> n8n webhook HTTPS
 n8n ---------------------------------> Agent Service callback HTTPS
 Semua service -----------------------> Supabase cloud
 ```
 
 1. **Streamlit Community Cloud:** salin hanya nilai dari
    `.streamlit/secrets.toml.example` ke App settings -> Secrets. Jangan masukkan
-   service-role Supabase, database URL, atau credential Twilio ke process
+   service-role Supabase, database URL, atau credential Fonnte ke process
    Streamlit.
 2. **Agent Service:** salin `.env.production.example` ke secret manager platform
    backend, ganti seluruh domain `*.invalid`, isi secret, lalu jalankan
@@ -131,9 +131,9 @@ Semua service -----------------------> Supabase cloud
    compose bersama override `n8n/docker-compose.prod.yml`. Reverse proxy harus
    meneruskan domain n8n ke `127.0.0.1:5678`; `WEBHOOK_URL` wajib menunjuk origin
    HTTPS publik n8n.
-4. Arahkan webhook inbound Twilio ke
-   `https://<domain-n8n>/webhook/stockqu-wa-inbound` dan gunakan URL production
-   yang ditampilkan n8n, bukan URL test.
+4. Arahkan webhook inbound Fonnte ke
+   `https://<domain-n8n>/webhook/stockqu-wa-inbound?secret=<FONNTE_WEBHOOK_SECRET>`
+   dan gunakan URL production yang ditampilkan n8n, bukan URL test.
 
 Contoh pemeriksaan setelah deployment:
 
@@ -319,10 +319,11 @@ State machine PO dijaga di database:
 bukan `OK`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
 Barang terkirim dicatat sebagai `incoming_qty` (Supabase) dan tab `Incoming` (Google Sheets), bukan stok fisik.
 Idempotensi: satu job cron per hari, satu approval per negotiation run, `decision_ref` unik per balasan
-Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
+Fonnte/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
 
 Approval: balas `OK APR-...`, `TOLAK APR-...`, atau `REVISI APR-...` dari nomor di `APPROVER_WHATSAPP_NUMBERS`.
-Signature Twilio diverifikasi. Jika WhatsApp gagal, manager bisa memutuskan di halaman **PO & Approval**.
+Webhook Fonnte dilindungi secret di n8n, lalu nomor dan kode APR divalidasi Agent Service. Jika WhatsApp gagal,
+manager bisa memutuskan di halaman **PO & Approval**.
 
 ## P5 - Dashboard & Laporan
 

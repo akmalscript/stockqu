@@ -1,7 +1,7 @@
 """Panggilan keluar Agent Service -> n8n (SRS-NF-19/21/23/25).
 
-n8n memegang integrasi eksternal (Twilio WhatsApp, Gmail). Agent Service hanya mengirim
-event JSON ke webhook n8n dengan bearer token. Ganti Twilio Sandbox ke sender produksi
+n8n memegang integrasi eksternal (Fonnte/Twilio WhatsApp, Gmail). Agent Service hanya mengirim
+event JSON ke webhook n8n dengan bearer token. Ganti provider WhatsApp
 cukup di workflow n8n, tanpa mengubah logika procurement (abstraction layer).
 
 Env:

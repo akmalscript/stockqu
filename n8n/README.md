@@ -7,8 +7,8 @@ validasi, budget, dan state PO ada di **Python Agent Service** + database
 | File | Fungsi | Pemicu |
 |---|---|---|
 | `w1_daily_cron.json` | W1 - Jalankan workflow harian | Cron `0 7 * * *` zona Asia/Jakarta |
-| `w2_whatsapp_approval_notify.json` | W2 - Kirim WA approval ke manager | Dipanggil Agent Service |
-| `w3_whatsapp_inbound_reply.json` | W3 - Terima balasan `OK/TOLAK/REVISI APR-...` | Webhook Twilio |
+| `w2_whatsapp_approval_notify.json` | W2 - Kirim WA approval melalui Fonnte | Dipanggil Agent Service |
+| `w3_whatsapp_inbound_reply.json` | W3 - Terima balasan `OK/TOLAK/REVISI APR-...` | Webhook Fonnte |
 | `w4_w5_po_email_stock_update.json` | W4 - Gmail kirim PDF PO, W5 - tandai sent + stok in-transit | Dipanggil Agent Service setelah approved |
 
 ```text
@@ -67,6 +67,8 @@ disimpan di credential n8n; jangan taruh token di JSON workflow atau Git.
   `Bearer <SERVICE_TO_N8N_TOKEN>`.
 - **StockQu Agent Service** (`Header Auth`): `Authorization` =
   `Bearer <N8N_TO_SERVICE_TOKEN>`.
+- **StockQu Fonnte API Token** (`Header Auth`): `Authorization` = token perangkat
+  Fonnte tanpa awalan `Bearer`.
 - **StockQu Supabase Service Role** (`Supabase API`): project URL dan secret key
   atau legacy `service_role`.
 - **StockQu Gmail OAuth2** (`Gmail OAuth2 API`): OAuth akun pengirim PO.
@@ -127,15 +129,20 @@ N8N_WA_NOTIFY_WEBHOOK_URL=https://<n8n>/webhook/stockqu-wa-notify
 N8N_PO_EMAIL_WEBHOOK_URL=https://<n8n>/webhook/stockqu-po-email
 ```
 
-## 7. Twilio WhatsApp Sandbox
+## 7. Fonnte WhatsApp
 
-1. Twilio Console -> Messaging -> Try it out -> WhatsApp. Nomor manager harus
-   `join <kata-sandi>` lebih dulu.
-2. "When a message comes in":
-   `https://<n8n>/webhook/stockqu-wa-inbound`, method POST.
-3. Isi `TWILIO_AUTH_TOKEN` dan `APPROVER_WHATSAPP_NUMBERS` di `.env` Agent
-   Service. Balasan dari nomor lain atau tanpa signature Twilio yang valid
-   ditolak tanpa mengubah PO.
+1. Hubungkan perangkat WhatsApp di dashboard Fonnte dan aktifkan **Auto Read**.
+2. Buat credential Header Auth **StockQu Fonnte API Token** di n8n. Nama header
+   `Authorization`; value adalah token perangkat Fonnte tanpa awalan `Bearer`.
+3. Buat `FONNTE_WEBHOOK_SECRET` acak minimal 32 karakter di environment n8n.
+4. Pada Device -> Edit -> Webhook URL, isi:
+   `https://<n8n>/webhook/stockqu-wa-inbound?secret=<FONNTE_WEBHOOK_SECRET>`.
+5. Isi `APPROVER_WHATSAPP_NUMBERS` di Agent Service. Nomor lain, payload tanpa
+   `inboxid`, format tanpa kode APR, dan webhook dengan secret salah ditolak.
+
+Token Fonnte tidak disimpan di workflow JSON atau Agent Service. W3 meneruskan
+payload yang sudah lolos secret ke Agent Service menggunakan bearer token n8n,
+kemudian n8n mengirim balasan melalui API Fonnte dengan `inboxid` yang sama.
 
 ## 8. Test aman sebelum aktivasi
 

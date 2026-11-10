@@ -1,98 +1,90 @@
 {
-  "name": "StockQu W2 - Kirim WA approval",
+  "name": "StockQu W2 - Kirim WA approval via Fonnte",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "stockqu-wa-notify",
-        "authentication": "headerAuth",
-        "responseMode": "onReceived",
-        "options": {}
-      },
+      "parameters": {"httpMethod": "POST", "path": "stockqu-wa-notify", "authentication": "headerAuth", "responseMode": "onReceived", "options": {}},
       "id": "f4da6dc0-94b5-5f3b-978d-7d9e2b960b31",
-      "name": "Approval request (dari Agent Service)",
+      "name": "Approval request dari Agent Service",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_ME",
-          "name": "StockQu inbound (Bearer SERVICE_TO_N8N_TOKEN)"
-        }
-      },
+      "position": [0, 0],
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_ME", "name": "StockQu inbound"}},
       "webhookId": "stockqu-wa-notify"
     },
     {
       "parameters": {
-        "jsCode": "const b = $input.first().json.body;\nreturn (b.to || []).map(to => ({ json: { to, message: b.message, approval_code: b.approval_code } }));"
+        "jsCode": "const body = $input.first().json.body ?? {};\nconst recipients = Array.isArray(body.to) ? body.to : [];\nconst message = String(body.message ?? '').trim();\nconst approvalCode = String(body.approval_code ?? '').trim();\nif (!recipients.length) throw new Error('APPROVER_MISSING');\nif (!message || !/^APR-\\d{8}-\\d{2,}$/.test(approvalCode)) throw new Error('APPROVAL_PAYLOAD_INVALID');\nreturn recipients.map((recipient) => {\n  const target = String(recipient).replace(/[^0-9]/g, '');\n  if (!target) throw new Error('APPROVER_NUMBER_INVALID');\n  return { json: { target, message, approval_code: approvalCode } };\n});"
       },
       "id": "92613985-367f-528b-aa61-edea7ba018b8",
-      "name": "Satu item per approver",
+      "name": "Validasi dan pisahkan approver",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        260,
-        0
-      ]
+      "position": [260, 0]
     },
     {
       "parameters": {
-        "from": "={{ $env.TWILIO_WHATSAPP_FROM }}",
-        "to": "={{ $json.to }}",
-        "toWhatsapp": true,
-        "message": "={{ $json.message }}"
+        "method": "POST",
+        "url": "https://api.fonnte.com/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {"parameters": [
+          {"name": "target", "value": "={{ $json.target }}"},
+          {"name": "message", "value": "={{ $json.message }}"},
+          {"name": "countryCode", "value": "0"},
+          {"name": "connectOnly", "value": "true"}
+        ]},
+        "options": {"timeout": 20000}
       },
-      "id": "cbfba003-0dd2-5b00-8143-a8bfa11d2465",
-      "name": "Twilio WhatsApp",
-      "type": "n8n-nodes-base.twilio",
+      "id": "8d210b9e-530a-49dc-8721-d1a6bfb96a74",
+      "name": "Fonnte kirim approval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 0],
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_ME", "name": "StockQu Fonnte API Token"}},
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3},
+          "conditions": [{
+            "id": "76a3bf41-44e1-47ca-bc9a-a7af86d6cc37",
+            "leftValue": "={{ $json.status === true && !$json.error }}",
+            "rightValue": "",
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "392aa375-f6e0-4a36-aa0e-f4656810e984",
+      "name": "Fonnte menerima pesan",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {"errorMessage": "Fonnte menolak atau gagal menerima pesan approval WhatsApp."},
+      "id": "95a1c195-4e61-4c94-8a0e-b7dfc35d4383",
+      "name": "Stop Fonnte failure",
+      "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
-      "position": [
-        520,
-        0
-      ],
-      "credentials": {
-        "twilioApi": {
-          "id": "REPLACE_ME",
-          "name": "Twilio WhatsApp Sandbox"
-        }
-      }
+      "position": [1040, 100]
     }
   ],
   "connections": {
-    "Approval request (dari Agent Service)": {
-      "main": [
-        [
-          {
-            "node": "Satu item per approver",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Satu item per approver": {
-      "main": [
-        [
-          {
-            "node": "Twilio WhatsApp",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Approval request dari Agent Service": {"main": [[{"node": "Validasi dan pisahkan approver", "type": "main", "index": 0}]]},
+    "Validasi dan pisahkan approver": {"main": [[{"node": "Fonnte kirim approval", "type": "main", "index": 0}]]},
+    "Fonnte kirim approval": {"main": [[{"node": "Fonnte menerima pesan", "type": "main", "index": 0}]]},
+    "Fonnte menerima pesan": {"main": [[], [{"node": "Stop Fonnte failure", "type": "main", "index": 0}]]}
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "timezone": "Asia/Jakarta",
-    "saveDataErrorExecution": "all"
-  },
-  "meta": {
-    "stockqu": "Isi pesan & nomor approver dibuat Agent Service. Ganti node Twilio untuk sender produksi (NF-21)."
-  },
+  "settings": {"executionOrder": "v1", "timezone": "Asia/Jakarta", "saveDataErrorExecution": "all"},
+  "meta": {"stockqu": "Token Fonnte disimpan sebagai Header Auth credential. Agent Service menentukan penerima dan isi pesan."},
   "pinData": {}
 }
