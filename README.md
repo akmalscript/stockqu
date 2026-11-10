@@ -3,11 +3,11 @@
 Sistem inventori & pengadaan barang berbasis AI multi-agent yang mampu memprediksi stok habis, menentukan prioritas pembelian berdasarkan anggaran, membandingkan supplier, membuat draft PO, meminta approval via WhatsApp, dan mengupdate stok secara otomatis.
 
 Target: **GTNIC Enterprise dan Industry**  
-Demo: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari).
+Demo: Deteksi sampai draft PO dalam **15 menit** (dari proses manual 2 hari). Akses: [stockqu.streamlit.app](https://stockqu.streamlit.app/)
 
 ## Stack
 
-- **Frontend:** Streamlit saja, bukan fullstack React / Next.js. Fokus ke AI agent.
+- **Frontend:** Streamlit
 - **Backend:** Supabase (Postgres, Auth, RLS)
 - **Agent:** LangGraph (Python) - Analyst, Purchaser, Negotiator
 - **Otomasi:** n8n (cron jam 7 pagi, WhatsApp approval, Email PO, update stok)
@@ -27,6 +27,7 @@ Rumus:
 - `days-to-stockout = stok_saat_ini / rata_rata_penjualan_harian`
 - `rata_rata_penjualan_harian = total_penjualan_6_bulan / 180`
 - `kebutuhan_restock = (rata_rata_penjualan_harian x (lead_time_hari + safety_hari)) - stok_saat_ini`
+- `safety_stock = rata_rata_penjualan_harian x safety_hari (default 3)`
 
 ## Cara Install
 
@@ -189,10 +190,9 @@ service role setelah pemeriksaan role di backend. Akses anonymous dicabut.
 
 1. Buat Service Account di Google Cloud, aktifkan Google Sheets API, download JSON key (simpan di luar repo).
 2. Buat spreadsheet, share ke email service account sebagai **Editor**.
-3. Isi `GOOGLE_SHEETS_SPREADSHEET_ID` dan `GOOGLE_SERVICE_ACCOUNT_FILE` (atau `GOOGLE_SERVICE_ACCOUNT_JSON` untuk Streamlit Cloud).
+3. Isi `GOOGLE_SHEETS_SPREADSHEET_ID` dan `GOOGLE_SERVICE_ACCOUNT_FILE` (atau section `[gcp_service_account]` / `GOOGLE_SERVICE_ACCOUNT_JSON` untuk Streamlit Cloud secrets).
 4. Tab `Stok` dibuat otomatis saat run pertama, kolom: `sku | product_name | branch | stock_qty | updated_at | source`.
-   Edit stok langsung di Sheets; run berikutnya menyinkronkan ke Supabase (yang `updated_at`-nya lebih baru menang,
-   baris tanpa `updated_at` dianggap edit manual terbaru). Baris invalid ditolak dan dicatat di `sync_logs`.
+   Edit stok langsung di Sheets; data otomatis tersinkronisasi dua arah secara real-time setiap kali halaman dibuka/di-refresh atau via tombol **🔄 Sinkron Sheets** (edit manual di Sheets selalu diutamakan). Perubahan stok langsung merefleksikan days-to-stockout dan level risiko terkini di seluruh halaman. Baris invalid ditolak dan dicatat di `sync_logs`.
 
 Jika Sheets belum dikonfigurasi atau gagal dibaca (retry 3x), Analyst otomatis fallback ke stok Supabase dan mencatatnya di Execution Trace.
 
@@ -376,7 +376,7 @@ stockqu/
   AGENTS.md
   app.py
   app_pages/     # 11 halaman Streamlit (router st.navigation di app.py)
-  scripts/       # CLI: run_analyst.py + run_purchaser.py
+  scripts/       # CLI scripts & agent service (run_analyst, run_purchaser, run_agent_service, dll)
   tests/         # pytest (tanpa jaringan)
   requirements.txt
   .env.example
