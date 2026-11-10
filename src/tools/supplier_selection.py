@@ -127,7 +127,13 @@ def build_po_drafts(selections: list[dict], branches: dict[str, str], as_of: dat
     for s in selections:
         if s["selected"] is not None:
             groups[(s["selected"]["supplier_id"], s["item"]["branch_id"])].append(s)
-    suffix = run_id.split("-")[-1][-6:].upper()
+    run_parts = [part for part in run_id.split("-") if part]
+    # Orkestrator memberi run ID seperti WF-YYYYMMDD-ABC123-NEG. Segmen
+    # terakhir hanya nama agent dan sama pada setiap run, jadi ambil nonce
+    # sebelumnya. Run standalone tetap memakai segmen terakhir seperti semula.
+    agent_labels = {"ANL", "PUR", "NEG"}
+    suffix_part = run_parts[-2] if len(run_parts) >= 2 and run_parts[-1].upper() in agent_labels else run_parts[-1]
+    suffix = suffix_part[-6:].upper()
     pos = []
     for seq, ((supplier_id, branch_id), rows) in enumerate(
         sorted(groups.items(), key=lambda kv: (branches.get(kv[0][1], ""), kv[1][0]["selected"]["supplier_name"])),

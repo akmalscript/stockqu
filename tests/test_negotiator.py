@@ -20,6 +20,7 @@ from src.tools.contract_rag import (
 )
 from src.tools.supplier_search import build_offers, discount_fraction, order_qty_for
 from src.tools.supplier_selection import (
+    build_po_drafts,
     compare_offers,
     select_supplier,
     validate_po_drafts,
@@ -251,6 +252,22 @@ def test_negotiator_end_to_end_drafts_and_persists():
     assert all(set(i) >= {"moq", "pack_size", "line_total"} for p in payload for i in p["items"])
     tools = [log["tool_name"] for log in repo.logs]
     assert tools[0] == "baca_procurement_plan" and "rag_kontrak_supplier" in tools and tools[-1] == "selesai"
+
+
+def test_orchestrator_runs_on_same_day_get_unique_po_numbers():
+    selections = [{
+        "item": {"product_id": "pA", "sku": "SKU-A", "product_name": "Item A", "branch_id": "b1"},
+        "selected": {"supplier_id": "sA", "supplier_name": "Supplier A", "lead_time_days": 3,
+                     "order_qty": 10, "list_price": 12000, "discount_pct": 0,
+                     "effective_price": 12000, "moq": 1, "pack_size": 1, "contract_id": "k1"},
+    }]
+
+    first = build_po_drafts(selections, {"b1": "Branch 1"}, AS_OF, "WF-20261109-ABC123-NEG", "plan-1")
+    second = build_po_drafts(selections, {"b1": "Branch 1"}, AS_OF, "WF-20261109-DEF456-NEG", "plan-2")
+
+    assert first[0]["po_number"] == "PO-20261109-ABC123-01"
+    assert second[0]["po_number"] == "PO-20261109-DEF456-01"
+    assert first[0]["po_number"] != second[0]["po_number"]
 
 
 def test_budget_recheck_replans_to_cheapest():
