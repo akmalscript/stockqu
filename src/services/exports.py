@@ -19,18 +19,12 @@ def _rp(value) -> str:
     return f"Rp {float(value):,.0f}".replace(",", ".")
 
 
-def po_pdf_bytes(po: dict, is_dummy: bool) -> bytes:
+def po_pdf_bytes(po: dict, is_dummy: bool = False) -> bytes:
     from fpdf import FPDF
 
     pdf = FPDF(format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*TEAL_RGB)
-    label = "DRAFT - BELUM DIKIRIM - MENUNGGU APPROVAL MANAGER"
-    if is_dummy:
-        label = f"{LABEL_SIMULASI} | {label}"
-    pdf.cell(0, 6, label, new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(*NAVY_RGB)
     pdf.set_font("Helvetica", "B", 16)
     pdf.cell(0, 10, f"Purchase Order {po['po_number']}", new_x="LMARGIN", new_y="NEXT")
@@ -67,10 +61,6 @@ def po_pdf_bytes(po: dict, is_dummy: bool) -> bytes:
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(sum(widths[:-1]), 8, "Total", border=1)
     pdf.cell(widths[-1], 8, _rp(po["total_amount"]), border=1, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(4)
-    pdf.set_font("Helvetica", size=8)
-    pdf.multi_cell(0, 4.5, "Sumber harga: Supabase contracts (lihat matriks perbandingan supplier). "
-                           "PO ini tidak mengikat sebelum disetujui manager via WhatsApp / dashboard.")
     return bytes(pdf.output())
 
 
