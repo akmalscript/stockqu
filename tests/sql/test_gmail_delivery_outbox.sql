@@ -45,6 +45,8 @@ begin
   into v_result;
   assert (v_result->>'claimed')::boolean,
     'an approved PO with WhatsApp OK must be claimable';
+  assert v_result->>'recipient_email' = 'supplier.test@example.com',
+    'the recipient must come from the supplier master, never a request override';
   assert jsonb_array_length(v_result->'items') = 1,
     'the claim must include trusted PO line items';
 

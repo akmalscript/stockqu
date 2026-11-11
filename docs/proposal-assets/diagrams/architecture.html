@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arsitektur Sistem StockQu</title>
+  <style>
+    :root { --teal:#0E7C61; --navy:#1E2A44; --mint:#EFF4F1; --white:#FFFFFF; }
+    * { box-sizing:border-box; }
+    html, body { margin:0; width:1400px; height:900px; overflow:hidden; background:var(--white); }
+    body { font-family:Arial, sans-serif; color:var(--navy); }
+    .canvas { position:relative; width:1400px; height:900px; padding:48px 54px; }
+    h1 { margin:0; font-size:38px; line-height:1.1; letter-spacing:-1px; }
+    .subtitle { margin-top:8px; color:#526078; font-size:18px; }
+    svg { position:absolute; left:54px; top:132px; width:1292px; height:710px; }
+    .zone { fill:var(--mint); stroke:#C8D7D1; stroke-width:2; rx:22; }
+    .zone-label { fill:var(--teal); font-size:16px; font-weight:700; letter-spacing:.8px; }
+    .node { fill:var(--white); stroke:var(--navy); stroke-width:2.2; rx:15; }
+    .node-primary { fill:var(--teal); stroke:var(--teal); stroke-width:2.2; rx:15; }
+    .node-dark { fill:var(--navy); stroke:var(--navy); stroke-width:2.2; rx:15; }
+    .node-title { fill:var(--navy); font-size:20px; font-weight:700; text-anchor:middle; }
+    .node-copy { fill:#526078; font-size:15px; text-anchor:middle; }
+    .node-title-inverse { fill:var(--white); font-size:20px; font-weight:700; text-anchor:middle; }
+    .node-copy-inverse { fill:var(--mint); font-size:15px; text-anchor:middle; }
+    .flow { fill:none; stroke:var(--teal); stroke-width:4; marker-end:url(#arrow); }
+    .flow-secondary { fill:none; stroke:var(--navy); stroke-width:3; marker-end:url(#arrowNavy); }
+    .flow-dashed { fill:none; stroke:var(--navy); stroke-width:2.6; stroke-dasharray:9 7; marker-end:url(#arrowNavy); }
+    .label-bg { fill:var(--white); rx:8; }
+    .edge-label { fill:#526078; font-size:13px; font-weight:700; text-anchor:middle; }
+    .legend { fill:#526078; font-size:14px; }
+  </style>
+</head>
+<body>
+<main class="canvas" aria-label="Diagram arsitektur sistem StockQu">
+  <h1>Arsitektur Sistem StockQu</h1>
+  <p class="subtitle">Alur keputusan terkontrol: data → tiga agent deterministik → approval manusia → eksekusi integrasi</p>
+  <svg viewBox="0 0 1292 710" role="img" aria-labelledby="title desc">
+    <title id="title">Arsitektur sistem StockQu</title>
+    <desc id="desc">Streamlit berkomunikasi dengan FastAPI Agent Service dan LangGraph yang mengorkestrasi Analyst, Purchaser, dan Negotiator. Data disimpan di Supabase dan disinkronkan dengan Google Sheets. n8n menangani jadwal, WhatsApp, Gmail, dan pembaruan stok setelah approval.</desc>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0E7C61"/></marker>
+      <marker id="arrowNavy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1E2A44"/></marker>
+    </defs>
+
+    <rect class="zone" x="18" y="26" width="1256" height="150"/>
+    <text class="zone-label" x="44" y="55">EXPERIENCE &amp; SERVICE</text>
+    <rect class="node" x="54" y="76" width="292" height="76"/>
+    <text class="node-title" x="200" y="107">Streamlit Dashboard</text>
+    <text class="node-copy" x="200" y="132">role-based UI · trace · export</text>
+    <rect class="node-primary" x="500" y="76" width="292" height="76"/>
+    <text class="node-title-inverse" x="646" y="107">FastAPI Agent Service</text>
+    <text class="node-copy-inverse" x="646" y="132">job · webhook · admission control</text>
+    <rect class="node-dark" x="946" y="76" width="292" height="76"/>
+    <text class="node-title-inverse" x="1092" y="107">LangGraph Orchestrator</text>
+    <text class="node-copy-inverse" x="1092" y="132">state · routing · checkpoint</text>
+
+    <path class="flow" d="M346 114 H500"/>
+    <path class="flow" d="M792 114 H946"/>
+
+    <rect class="zone" x="18" y="206" width="1256" height="230"/>
+    <text class="zone-label" x="44" y="237">DECISION AGENTS</text>
+    <rect class="node" x="54" y="268" width="332" height="120"/>
+    <text class="node-title" x="220" y="303">01 · Analyst</text>
+    <text class="node-copy" x="220" y="332">forecast · days-to-stockout</text>
+    <text class="node-copy" x="220" y="357">restock · uncertainty</text>
+    <rect class="node" x="480" y="268" width="332" height="120"/>
+    <text class="node-title" x="646" y="303">02 · Purchaser</text>
+    <text class="node-copy" x="646" y="332">budget · MOQ · priority</text>
+    <text class="node-copy" x="646" y="357">MILP (PuLP/CBC) · fallback</text>
+    <rect class="node" x="906" y="268" width="332" height="120"/>
+    <text class="node-title" x="1072" y="303">03 · Negotiator</text>
+    <text class="node-copy" x="1072" y="332">3 supplier · contract evidence</text>
+    <text class="node-copy" x="1072" y="357">validation · draft PO</text>
+
+    <path class="flow-secondary" d="M1092 152 V188 H220 V268"/>
+    <path class="flow-secondary" d="M1092 188 H646 V268"/>
+    <path class="flow-secondary" d="M1092 188 H1072 V268"/>
+    <path class="flow" d="M386 328 H480"/>
+    <path class="flow" d="M812 328 H906"/>
+    <path class="flow-dashed" d="M906 376 H846 V418 H646 V388"/>
+    <rect class="label-bg" x="718" y="397" width="128" height="26"/>
+    <text class="edge-label" x="782" y="415">replan bila tidak feasible</text>
+
+    <rect class="zone" x="18" y="466" width="1256" height="196"/>
+    <text class="zone-label" x="44" y="497">DATA &amp; INTEGRATION</text>
+    <rect class="node-primary" x="54" y="528" width="332" height="92"/>
+    <text class="node-title-inverse" x="220" y="562">Supabase / PostgreSQL</text>
+    <text class="node-copy-inverse" x="220" y="590">Auth · RLS · audit · state</text>
+    <rect class="node" x="480" y="528" width="332" height="92"/>
+    <text class="node-title" x="646" y="562">Google Sheets</text>
+    <text class="node-copy" x="646" y="590">stok bersama · sinkron dua arah</text>
+    <rect class="node-dark" x="906" y="528" width="332" height="92"/>
+    <text class="node-title-inverse" x="1072" y="562">n8n Integration Layer</text>
+    <text class="node-copy-inverse" x="1072" y="590">07:00 · WhatsApp · Gmail · incoming</text>
+
+    <path class="flow-secondary" d="M220 388 V528"/>
+    <path class="flow-secondary" d="M646 388 V528"/>
+    <path class="flow-secondary" d="M1072 388 V528"/>
+    <path class="flow" d="M386 574 H480"/>
+    <path class="flow" d="M812 574 H906"/>
+    <path class="flow-dashed" d="M1072 620 V680 H220 V620"/>
+
+    <line x1="54" y1="692" x2="94" y2="692" stroke="#0E7C61" stroke-width="4"/>
+    <text class="legend" x="104" y="697">alur utama</text>
+    <line x1="235" y1="692" x2="275" y2="692" stroke="#1E2A44" stroke-width="3" stroke-dasharray="9 7"/>
+    <text class="legend" x="285" y="697">feedback / event</text>
+    <text class="legend" x="1250" y="697" text-anchor="end">Human-in-the-loop: email PO &amp; update incoming hanya sesudah approval valid</text>
+  </svg>
+</main>
+</body>
+</html>

@@ -1,6 +1,6 @@
 """Manajemen dokumen supplier (SRS-F-53, roadmap P3-14).
 
-- ``build_dummy_contract_pdf``: buat PDF kontrak DUMMY yang isinya HANYA dari data Supabase
+- ``build_dummy_contract_pdf``: buat PDF kontrak prototype yang isinya HANYA dari data Supabase
   (contracts, suppliers, products). Tidak ada klausul/angka karangan.
 - ``ingest_supplier_pdf``: validasi PDF -> ekstraksi teks -> chunk per Pasal -> upload ke
   Supabase Storage (bucket privat) -> simpan metadata + chunk. Idempotent via sha256.
@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date
+from datetime import date, datetime, timezone
 
 from src.config import LABEL_SIMULASI
 from src.tools.contract_rag import chunk_pages, extract_pdf_pages
@@ -27,7 +27,7 @@ def _rp(value: float) -> str:
 
 
 def contract_text_sections(supplier: dict, rows: list[dict], products: dict[str, dict]) -> list[tuple[str, list[str]]]:
-    """Isi kontrak dummy sebagai (judul pasal, baris). Semua angka dari tabel Supabase."""
+    """Isi kontrak prototype sebagai (judul pasal, baris). Semua angka dari tabel Supabase."""
     valid_until = max((str(r["valid_until"]) for r in rows if r.get("valid_until")), default="-")
     price_lines = []
     for r in sorted(rows, key=lambda r: products.get(str(r["product_id"]), {}).get("sku", "")):
@@ -69,11 +69,15 @@ def build_dummy_contract_pdf(supplier: dict, rows: list[dict], products: dict[st
     from fpdf import FPDF
 
     pdf = FPDF(format="A4")
+    # Prototype documents are content-addressed. A fixed creation timestamp
+    # keeps identical source data byte-identical across runs, so SHA-based
+    # idempotency does not depend on the wall clock.
+    pdf.set_creation_date(datetime(2000, 1, 1, tzinfo=timezone.utc))
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(14, 124, 97)
-    pdf.cell(0, 6, f"{LABEL_SIMULASI} - DOKUMEN DUMMY UNTUK DEMO", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"{LABEL_SIMULASI} - DOKUMEN PROTOTYPE", new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(30, 42, 68)
     pdf.set_font("Helvetica", "B", 14)
     pdf.cell(0, 10, f"Kontrak Pengadaan {supplier['name']}", new_x="LMARGIN", new_y="NEXT")

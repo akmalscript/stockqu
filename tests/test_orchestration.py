@@ -43,7 +43,6 @@ def env(monkeypatch):
     monkeypatch.setenv("N8N_TO_SERVICE_TOKEN", "svc-token")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "twilio-secret")
     monkeypatch.setenv("AGENT_SERVICE_PUBLIC_URL", "https://agent.example.test")
-    monkeypatch.delenv("PO_EMAIL_TEST_RECIPIENT", raising=False)
 
 
 class FakeNotifier:
@@ -150,7 +149,7 @@ class P4Repo:
         return [{**self.pos[i], "draft": self.pos[i]["draft"]} for i in ids]
 
     def has_dummy_sales(self):
-        return True
+        return False
 
     # jobs + logs
     def create_workflow_job(self, row):
@@ -257,6 +256,9 @@ def test_full_flow_waits_for_ok_then_emails_and_updates_stock():
     assert res["status"] == "approved" and "DISETUJUI" in res["reply"]
     emails = [c for c in notifier.calls if c[0] == "N8N_PO_EMAIL_WEBHOOK_URL"]
     assert [c[1]["po_number"] for c in emails] == ["PO-1"]  # PO-2 diblokir: email supplier kosong
+    assert "to" not in emails[0][1]
+    assert "subject" not in emails[0][1]
+    assert "body" not in emails[0][1]
     assert emails[0][1]["callback_url"] == "https://agent.example.test/purchase-orders/PO-1/sent"
     assert emails[0][1]["pdf_base64"]
     blocked = next(d for d in res["dispatch"] if d["po_number"] == "PO-2")
@@ -278,6 +280,42 @@ def test_reject_stops_without_email():
     assert res["status"] == "rejected"
     assert all(p["status"] == "rejected" for p in repo.pos.values())
     assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
+
+
+def test_simulation_sales_never_dispatches_production_email(monkeypatch):
+    monkeypatch.setenv("STOCKQU_ENV", "production")
+    monkeypatch.delenv("PO_EMAIL_TEST_RECIPIENT", raising=False)
+    repo, notifier = P4Repo(), FakeNotifier()
+    repo.has_dummy_sales = lambda: True
+    rt, _ = runtime_with(repo, notifier)
+    _, out = start(rt)
+    res = rt.submit_decision(out["approval"]["approval_code"], {
+        "decision": "approved", "via": "whatsapp", "decided_by": MANAGER,
+        "decision_ref": "twilio:SM-DUMMY",
+    })
+
+    assert not any(c[0] == "N8N_PO_EMAIL_WEBHOOK_URL" for c in notifier.calls)
+    assert all(d["status"] == "blocked" for d in res["dispatch"])
+    assert all("mode prototype" in d["detail"] for d in res["dispatch"])
+
+
+def test_simulation_sales_dispatches_only_to_prototype_inbox(monkeypatch):
+    monkeypatch.setenv("STOCKQU_ENV", "prototype")
+    monkeypatch.setenv("PO_EMAIL_TEST_RECIPIENT", "a@supplier.test")
+    repo, notifier = P4Repo(), FakeNotifier()
+    repo.has_dummy_sales = lambda: True
+    rt, _ = runtime_with(repo, notifier)
+    _, out = start(rt)
+    res = rt.submit_decision(out["approval"]["approval_code"], {
+        "decision": "approved", "via": "whatsapp", "decided_by": MANAGER,
+        "decision_ref": "twilio:SM-PROTOTYPE",
+    })
+
+    emails = [c for c in notifier.calls if c[0] == "N8N_PO_EMAIL_WEBHOOK_URL"]
+    assert [c[1]["po_number"] for c in emails] == ["PO-1"]
+    assert emails[0][1]["simulation"] is True
+    blocked = next(d for d in res["dispatch"] if d["po_number"] == "PO-2")
+    assert blocked["status"] == "blocked"
 
 
 def test_replayed_webhook_is_idempotent():
@@ -367,6 +405,44 @@ def test_api_whatsapp_reply_checks_signature_and_whitelist():
 
     sent = client.post("/purchase-orders/PO-1/sent", json={"email_message_id": "gmail-1"}, headers=h)
     assert sent.status_code == 200 and sent.json()["status"] == "sent"
+
+
+def test_api_fonnte_reply_requires_n8n_token_whitelist_and_idempotent_inboxid():
+    from src.service.api import FonnteReply
+
+    aliased = FonnteReply.model_validate({"From": MANAGER, "Body": "OK APR-20261109-01", "id": "FN-ALIAS"})
+    assert aliased.sender == MANAGER and aliased.message.startswith("OK ") and aliased.inboxid == "FN-ALIAS"
+
+    repo = P4Repo()
+    client, _rt = api_client(repo)
+    h = {"Authorization": "Bearer svc-token"}
+    client.post("/workflows/daily-run", json={"day": "2026-11-09", "wait": True}, headers=h)
+    payload = {"sender": MANAGER, "message": "OK APR-20261109-01", "inboxid": "FN-1"}
+
+    assert client.post("/webhooks/fonnte-reply", json=payload).status_code == 401
+    assert client.post("/fonn", json={"From": MANAGER, "Body": payload["message"], "id": "FN-2"}).status_code == 401
+    stranger = client.post(
+        "/webhooks/fonnte-reply",
+        json={**payload, "sender": "+6289999999999"},
+        headers=h,
+    )
+    assert stranger.json()["accepted"] is False and "tidak terdaftar" in stranger.json()["reply_text"]
+    assert all(p["status"] == "waiting_approval" for p in repo.pos.values())
+
+    approved = client.post("/webhooks/fonnte-reply", json=payload, headers=h)
+    assert approved.status_code == 200
+    assert approved.json()["accepted"] is True and approved.json()["status"] == "approved"
+
+    replay = client.post("/webhooks/fonnte-reply", json=payload, headers=h)
+    assert replay.json()["accepted"] is True and replay.json()["status"] == "approved"
+
+    conflicting = client.post(
+        "/webhooks/fonnte-reply",
+        json={**payload, "inboxid": "FN-2", "message": "TOLAK APR-20261109-01"},
+        headers=h,
+    )
+    assert conflicting.json()["accepted"] is False
+    assert "sudah diputuskan" in conflicting.json()["reply_text"]
 
 
 def test_api_sent_callback_blocked_before_approval():

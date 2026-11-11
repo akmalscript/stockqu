@@ -163,6 +163,9 @@ class UIRepo:
 
 @pytest.fixture
 def ui(monkeypatch):
+    # UI smoke tests use isolated fakes and must not inherit a developer's
+    # production environment, whose readiness gate intentionally stops the app.
+    monkeypatch.setenv("STOCKQU_ENV", "test")
     monkeypatch.setenv("STOCKQU_AGENT_SERVICE_URL", "https://agent.test")
     monkeypatch.setenv("N8N_TO_SERVICE_TOKEN", "token")
 

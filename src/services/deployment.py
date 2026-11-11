@@ -111,9 +111,13 @@ def agent_service_production_errors() -> list[str]:
         "N8N_WA_NOTIFY_WEBHOOK_URL",
         "N8N_PO_EMAIL_WEBHOOK_URL",
         "APPROVER_WHATSAPP_NUMBERS",
-        "TWILIO_AUTH_TOKEN",
         "GOOGLE_SHEETS_SPREADSHEET_ID",
     )
+    whatsapp_provider = (get_setting("WHATSAPP_PROVIDER", "fonnte") or "fonnte").strip().lower()
+    if whatsapp_provider not in {"fonnte", "twilio"}:
+        errors.append("WHATSAPP_PROVIDER wajib fonnte atau twilio")
+    if whatsapp_provider == "twilio" and not (get_setting("TWILIO_AUTH_TOKEN") or "").strip():
+        errors.append("TWILIO_AUTH_TOKEN belum diisi untuk provider twilio")
     if not ((get_setting("GOOGLE_SERVICE_ACCOUNT_FILE") or "").strip() or
             (get_setting("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()):
         errors.append("GOOGLE_SERVICE_ACCOUNT_FILE atau GOOGLE_SERVICE_ACCOUNT_JSON wajib diisi")
