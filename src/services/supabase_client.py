@@ -256,7 +256,14 @@ class SupabaseRepository:
         )
 
     def has_dummy_sales(self) -> bool:
-        res = self.read.table("sales_history").select("id").eq("source", "DUMMY-SEED").limit(1).execute()
+        """True jika histori memakai data simulasi, termasuk dataset prototype kecil."""
+        res = (
+            self.read.table("sales_history")
+            .select("id")
+            .in_("source", ["DUMMY-SEED", "PROTOTYPE-SYNTHETIC"])
+            .limit(1)
+            .execute()
+        )
         return bool(res.data)
 
     def fetch_sales_series(self, product_id: str, branch_id: str, start: date, end: date) -> list[dict]:

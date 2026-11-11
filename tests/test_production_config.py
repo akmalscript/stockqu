@@ -58,8 +58,9 @@ def _set_valid_agent_production(monkeypatch):
         "SERVICE_TO_N8N_TOKEN": "b" * 40,
         "N8N_WA_NOTIFY_WEBHOOK_URL": "https://n8n.stockqu.co/webhook/stockqu-wa-notify",
         "N8N_PO_EMAIL_WEBHOOK_URL": "https://n8n.stockqu.co/webhook/stockqu-po-email",
+        "WHATSAPP_PROVIDER": "fonnte",
         "APPROVER_WHATSAPP_NUMBERS": "+6281200000001",
-        "TWILIO_AUTH_TOKEN": "twilio-secret-value",
+        "TWILIO_AUTH_TOKEN": "",
         "GOOGLE_SHEETS_SPREADSHEET_ID": "sheet-id",
         "GOOGLE_SERVICE_ACCOUNT_FILE": "",
         "GOOGLE_SERVICE_ACCOUNT_JSON": '{"type":"service_account"}',
@@ -75,6 +76,15 @@ def test_agent_service_production_requires_consistent_public_urls(monkeypatch):
     monkeypatch.setenv("AGENT_SERVICE_PUBLIC_URL", "https://callback.stockqu.co")
     errors = agent_service_production_errors()
     assert any("wajib sama" in error for error in errors)
+
+
+def test_agent_service_requires_twilio_token_only_for_twilio_provider(monkeypatch):
+    _set_valid_agent_production(monkeypatch)
+    monkeypatch.setenv("WHATSAPP_PROVIDER", "twilio")
+    assert any("TWILIO_AUTH_TOKEN" in error for error in agent_service_production_errors())
+
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "twilio-secret-value")
+    assert agent_service_production_errors() == []
 
 
 def test_production_never_allows_http_n8n_bypass(monkeypatch):

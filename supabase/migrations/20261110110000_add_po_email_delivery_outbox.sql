@@ -159,8 +159,10 @@ begin
     );
   end if;
 
+  -- Alamat tujuan selalu berasal dari master supplier. Parameter dipertahankan
+  -- untuk kompatibilitas RPC, tetapi tidak boleh mengalihkan PO production.
   v_recipient_email := pg_catalog.lower(
-    pg_catalog.btrim(coalesce(nullif(p_recipient_email, ''), v_po.recipient_email, ''))
+    pg_catalog.btrim(coalesce(v_po.recipient_email, ''))
   );
 
   if v_recipient_email = '' then

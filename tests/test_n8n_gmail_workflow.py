@@ -42,6 +42,16 @@ def test_gmail_send_is_approval_gated_idempotent_and_has_failure_path():
     assert trigger["parameters"]["authentication"] == "headerAuth"
     assert trigger["parameters"]["path"] == "stockqu-po-email"
 
+    claim_body = nodes["Claim Approved PO"]["parameters"]["jsonBody"]
+    assert "p_recipient_email: null" in claim_body
+    assert ".body.to" not in claim_body
+
+    prepare_code = nodes["Prepare PO Payload"]["parameters"]["jsCode"]
+    assert "Purchase Order ${claim.po_number} - StockQu" in prepare_code
+    assert "payload.subject" not in prepare_code
+    assert "payload.body" not in prepare_code
+    assert "[TEST" not in prepare_code
+
     gmail = nodes["W4 - Gmail kirim PO"]
     assert gmail["type"] == "n8n-nodes-base.gmail"
     assert gmail["parameters"]["authentication"] == "oAuth2"
@@ -104,6 +114,8 @@ def test_email_outbox_migration_enforces_approval_and_service_role_only():
     assert "latest_approval.via" in sql
     assert "pg_catalog.lower(po.status) = 'approved'" in sql
     assert "'whatsapp'" in sql
+    assert "coalesce(v_po.recipient_email, '')" in sql
+    assert "nullif(p_recipient_email" not in sql
     assert "on conflict (po_id) do update" in sql
     assert "public.po_email_deliveries.status = 'failed'" in sql
     assert "public.po_email_deliveries.attempt_count < 3" in sql

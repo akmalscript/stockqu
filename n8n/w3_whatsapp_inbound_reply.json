@@ -1,112 +1,165 @@
 {
-  "name": "StockQu W3 - Terima balasan WA",
+  "name": "StockQu W3 - Terima balasan WA via Fonnte",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "stockqu-wa-inbound",
-        "responseMode": "responseNode",
-        "options": {}
-      },
+      "parameters": {"httpMethod": "POST", "path": "stockqu-wa-inbound", "responseMode": "responseNode", "options": {}},
       "id": "891e701d-4bca-5764-b9eb-fd53c490cc33",
-      "name": "Twilio inbound",
+      "name": "Fonnte inbound",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [
-        0,
-        0
-      ],
+      "position": [0, 0],
       "webhookId": "stockqu-wa-inbound"
     },
     {
       "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst supplied = String(input.query?.secret ?? input.headers?.['x-fonnte-webhook-secret'] ?? '');\nconst expected = String($env.FONNTE_WEBHOOK_SECRET ?? '');\nconst body = input.body ?? {};\nconst sender = String(body.sender ?? '').trim();\nconst message = String(body.message ?? body.text ?? '').trim();\nconst inboxid = String(body.inboxid ?? '').trim();\nconst authorized = expected.length >= 32 && supplied === expected;\nconst validPayload = Boolean(sender && message && inboxid);\nreturn [{ json: { authorized, valid_payload: validPayload, sender, message, inboxid } }];"
+      },
+      "id": "0c97216f-02e4-4f31-a2fc-87e957476272",
+      "name": "Validasi webhook Fonnte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3},
+          "conditions": [{
+            "id": "5115f2f6-8302-4f94-a1a3-2d0eca0a8356",
+            "leftValue": "={{ $json.authorized === true && $json.valid_payload === true }}",
+            "rightValue": "",
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f40cfb44-d8b7-4d42-98fd-4109450e4c11",
+      "name": "Webhook sah",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: false, detail: 'unauthorized or invalid payload' } }}",
+        "options": {"responseCode": 401}
+      },
+      "id": "d3488f6b-a69c-4852-a542-846ba9b47651",
+      "name": "Tolak webhook Fonnte",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [780, 180]
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "={{ $env.STOCKQU_AGENT_SERVICE_URL }}/webhooks/whatsapp-reply",
+        "url": "={{ $env.STOCKQU_AGENT_SERVICE_URL }}/webhooks/fonnte-reply",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ webhook_url: $env.STOCKQU_WA_INBOUND_URL, twilio_signature: $('Twilio inbound').item.json.headers['x-twilio-signature'] || '', params: $('Twilio inbound').item.json.body }) }}",
-        "options": {
-          "timeout": 30000,
-          "retry": {
-            "maxTries": 3,
-            "waitBetweenTries": 2000
-          }
-        }
+        "jsonBody": "={{ { sender: $json.sender, message: $json.message, inboxid: $json.inboxid } }}",
+        "options": {"timeout": 30000}
       },
       "id": "9770807c-67a0-596a-ba4b-ba9f8e330119",
-      "name": "Validasi & putuskan (Agent Service)",
+      "name": "Validasi dan putuskan di Agent Service",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [
-        260,
-        0
-      ],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "REPLACE_ME",
-          "name": "StockQu Agent Service (Bearer N8N_TO_SERVICE_TOKEN)"
-        }
-      }
+      "position": [780, -80],
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_ME", "name": "StockQu Agent Service"}},
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "respondWith": "text",
-        "responseBody": "=<Response><Message>{{ $json.reply_text }}</Message></Response>",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "text/xml"
-              }
-            ]
-          }
-        }
+        "jsCode": "const result = $input.first().json;\nconst inbound = $('Validasi webhook Fonnte').first().json;\nconst reply = String(result.reply_text ?? 'Permintaan tidak dapat diproses. Silakan periksa dashboard StockQu.').slice(0, 2000);\nreturn [{ json: { target: inbound.sender.replace(/[^0-9]/g, ''), inboxid: inbound.inboxid, reply } }];"
       },
+      "id": "70230265-f248-4984-823d-da9c88624b84",
+      "name": "Siapkan balasan Fonnte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, -80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.fonnte.com/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {"parameters": [
+          {"name": "target", "value": "={{ $json.target }}"},
+          {"name": "message", "value": "={{ $json.reply }}"},
+          {"name": "inboxid", "value": "={{ $json.inboxid }}"},
+          {"name": "countryCode", "value": "0"},
+          {"name": "connectOnly", "value": "true"}
+        ]},
+        "options": {"timeout": 20000}
+      },
+      "id": "91bf8a0d-8951-47bf-8925-45ed36c7b624",
+      "name": "Fonnte kirim balasan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1300, -80],
+      "credentials": {"httpHeaderAuth": {"id": "REPLACE_ME", "name": "StockQu Fonnte API Token"}},
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3},
+          "conditions": [{
+            "id": "b2ef5263-7468-4199-9f2f-35c21833ee34",
+            "leftValue": "={{ $json.status === true && !$json.error }}",
+            "rightValue": "",
+            "operator": {"type": "boolean", "operation": "true", "singleValue": true}
+          }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "94c6eae1-12ce-4ec5-8564-a8f17c5704a2",
+      "name": "Balasan diterima Fonnte",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1560, -80]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ { accepted: true } }}", "options": {"responseCode": 200}},
       "id": "c7121e8a-5f1d-5b23-a7df-f1da6283b7dd",
-      "name": "Balas TwiML ke Twilio",
+      "name": "Terima webhook Fonnte",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [
-        520,
-        0
-      ]
+      "position": [1820, -160]
+    },
+    {
+      "parameters": {"errorMessage": "Balasan approval diproses, tetapi Fonnte gagal menerima pesan balasan."},
+      "id": "29bd7e34-1a30-4389-81bc-d3689d02dd6c",
+      "name": "Stop Fonnte reply failure",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1820, 20]
     }
   ],
   "connections": {
-    "Twilio inbound": {
-      "main": [
-        [
-          {
-            "node": "Validasi & putuskan (Agent Service)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validasi & putuskan (Agent Service)": {
-      "main": [
-        [
-          {
-            "node": "Balas TwiML ke Twilio",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Fonnte inbound": {"main": [[{"node": "Validasi webhook Fonnte", "type": "main", "index": 0}]]},
+    "Validasi webhook Fonnte": {"main": [[{"node": "Webhook sah", "type": "main", "index": 0}]]},
+    "Webhook sah": {"main": [[{"node": "Validasi dan putuskan di Agent Service", "type": "main", "index": 0}], [{"node": "Tolak webhook Fonnte", "type": "main", "index": 0}]]},
+    "Validasi dan putuskan di Agent Service": {"main": [[{"node": "Siapkan balasan Fonnte", "type": "main", "index": 0}]]},
+    "Siapkan balasan Fonnte": {"main": [[{"node": "Fonnte kirim balasan", "type": "main", "index": 0}]]},
+    "Fonnte kirim balasan": {"main": [[{"node": "Balasan diterima Fonnte", "type": "main", "index": 0}]]},
+    "Balasan diterima Fonnte": {"main": [[{"node": "Terima webhook Fonnte", "type": "main", "index": 0}], [{"node": "Stop Fonnte reply failure", "type": "main", "index": 0}]]}
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "timezone": "Asia/Jakarta",
-    "saveDataErrorExecution": "all"
-  },
-  "meta": {
-    "stockqu": "Signature Twilio + whitelist nomor + kode APR divalidasi di Agent Service, balasan dikirim langsung via TwiML XML."
-  },
+  "settings": {"executionOrder": "v1", "timezone": "Asia/Jakarta", "saveDataErrorExecution": "all"},
+  "meta": {"stockqu": "Webhook Fonnte memakai secret query minimal 32 karakter. Token API hanya disimpan di Header Auth credential n8n."},
   "pinData": {}
 }

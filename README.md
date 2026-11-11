@@ -84,7 +84,7 @@ Service berjalan di `http://localhost:8000`.
 
 ### 3. Jalankan Tunnel Publik ngrok (Integrasi Webhook Eksternal)
 
-Dibutuhkan agar n8n Cloud dan Twilio Sandbox dapat mengirimkan callback webhook ke Agent Service lokal:
+Dibutuhkan agar n8n Cloud dan Fonnte dapat mengirimkan callback webhook ke Agent Service lokal:
 
 ```bash
 ngrok http 8000 --url=<domain-ngrok-anda>
@@ -113,14 +113,14 @@ dapat saling menjangkau melalui HTTPS publik:
 
 ```text
 Browser -> Streamlit HTTPS -> Agent Service HTTPS -> n8n HTTPS
-Twilio -------------------------------> n8n webhook HTTPS
+Fonnte -------------------------------> n8n webhook HTTPS
 n8n ---------------------------------> Agent Service callback HTTPS
 Semua service -----------------------> Supabase cloud
 ```
 
 1. **Streamlit Community Cloud:** salin hanya nilai dari
    `.streamlit/secrets.toml.example` ke App settings -> Secrets. Jangan masukkan
-   service-role Supabase, database URL, atau credential Twilio ke process
+   service-role Supabase, database URL, atau credential Fonnte ke process
    Streamlit.
 2. **Agent Service:** salin `.env.production.example` ke secret manager platform
    backend, ganti seluruh domain `*.invalid`, isi secret, lalu jalankan
@@ -131,9 +131,9 @@ Semua service -----------------------> Supabase cloud
    compose bersama override `n8n/docker-compose.prod.yml`. Reverse proxy harus
    meneruskan domain n8n ke `127.0.0.1:5678`; `WEBHOOK_URL` wajib menunjuk origin
    HTTPS publik n8n.
-4. Arahkan webhook inbound Twilio ke
-   `https://<domain-n8n>/webhook/stockqu-wa-inbound` dan gunakan URL production
-   yang ditampilkan n8n, bukan URL test.
+4. Arahkan webhook inbound Fonnte ke
+   `https://<domain-n8n>/webhook/stockqu-wa-inbound?secret=<FONNTE_WEBHOOK_SECRET>`
+   dan gunakan URL production yang ditampilkan n8n, bukan URL test.
 
 Contoh pemeriksaan setelah deployment:
 
@@ -165,8 +165,9 @@ Jalankan di Supabase SQL Editor, berurutan:
 2. `supabase/migrations/002_p1_analyst.sql` - tabel `sales_history`, `sync_logs`, `analyst_forecasts` + RLS
 3. `supabase/migrations/20261107111649_p2_purchaser.sql` - skema dan RPC Purchaser
 4. `supabase/migrations/20261107190000_p1_p2_security_hardening.sql` - Auth/RLS, audit actor, dan reservasi budget atomik
-5. `supabase/seed/002_sales_history_dummy.sql` - histori penjualan 180 hari (DUMMY, deterministik, 27.000 baris).
-   Konsisten dengan seed P0: 5 item kritis (Item A-E di Branch 1).
+5. `supabase/seed/002_sales_history_prototype.sql` - histori prototype transparan 180 hari
+   (5 item x 3 cabang, deterministik, 2.700 baris). Dataset ini bukan data bisnis nyata;
+   pengiriman email hanya boleh menuju `PO_EMAIL_TEST_RECIPIENT` saat `STOCKQU_ENV=prototype`.
 
 Isi `SUPABASE_SERVICE_ROLE_KEY` di `.env` supaya Agent bisa menyimpan hasil (`analyst_forecasts`, `agent_logs`, `sync_logs`).
 Key ini hanya untuk CLI/cron dan write backend; jangan pernah masukkan ke browser, UI, atau commit Git.
@@ -257,7 +258,7 @@ Execution Trace. Item tanpa harga kontrak tidak diberi harga buatan: keputusan m
    Isinya: `supplier_documents` + `supplier_document_chunks` (RAG kontrak), `negotiation_runs`,
    `supplier_comparisons`, kolom draft PO di `purchase_orders`/`po_items`, bucket Storage privat
    `supplier-documents`, dan RPC `persist_negotiation` (khusus `service_role`).
-2. Buat dan indeks kontrak DUMMY per supplier. Isi PDF hanya dari tabel `contracts`, `suppliers`,
+2. Buat dan indeks kontrak prototype per supplier. Isi PDF hanya dari tabel `contracts`, `suppliers`,
    `products` dan berlabel `CONTOH SIMULASI - BUKAN DATA REAL`:
 
    ```bash
@@ -299,7 +300,9 @@ Alur LangGraph: `load_plan -> search_suppliers -> retrieve_contracts -> compare_
    `supabase/migrations/20261110110000_add_po_email_delivery_outbox.sql` untuk claim Gmail idempoten,
    audit provider message ID, dan pencegahan email ganda.
 3. Isi variabel P4 di `.env` (lihat `.env.example`), termasuk `SUPABASE_DB_URL` untuk checkpoint Postgres.
-   Isi `suppliers.email` (atau `PO_EMAIL_TEST_RECIPIENT` untuk demo) supaya PO bisa dikirim.
+   Untuk production, isi `suppliers.email` dengan alamat resmi supplier. Untuk prototype dengan data simulasi,
+   isi `PO_EMAIL_TEST_RECIPIENT`; sistem hanya mengirim jika seluruh email supplier diarahkan ke inbox demo itu.
+   Mode production tetap memblokir seluruh pengiriman dari data simulasi.
 4. Jalankan Agent Service di belakang HTTPS:
 
    ```bash
@@ -319,10 +322,11 @@ State machine PO dijaga di database:
 bukan `OK`, sehingga email dan update stok tidak bisa terjadi tanpa OK.
 Barang terkirim dicatat sebagai `incoming_qty` (Supabase) dan tab `Incoming` (Google Sheets), bukan stok fisik.
 Idempotensi: satu job cron per hari, satu approval per negotiation run, `decision_ref` unik per balasan
-Twilio/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
+Fonnte/dashboard, dan ledger `inventory_transactions` unik per PO-SKU.
 
 Approval: balas `OK APR-...`, `TOLAK APR-...`, atau `REVISI APR-...` dari nomor di `APPROVER_WHATSAPP_NUMBERS`.
-Signature Twilio diverifikasi. Jika WhatsApp gagal, manager bisa memutuskan di halaman **PO & Approval**.
+Webhook Fonnte dilindungi secret di n8n, lalu nomor dan kode APR divalidasi Agent Service. Jika WhatsApp gagal,
+manager bisa memutuskan di halaman **PO & Approval**.
 
 ## P5 - Dashboard & Laporan
 
